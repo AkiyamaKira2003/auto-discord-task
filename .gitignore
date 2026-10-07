@@ -1,0 +1,14 @@
+.claude/
+.serena/
+diagnostics.js
+debug-modules.js
+
+# audisk-vencord-bundle build outputs
+tools/audisk-vencord-bundle/dist/
+tools/audisk-vencord-bundle-v*.zip
+tools/audisk-relay-v*.zip
+tools/audisk-devbuild-installer/plugin/
+tools/audisk-devbuild-installer-v*.zip
+
+# playwright-mcp drops snapshots and console logs wherever it is run from
+.playwright-mcp/

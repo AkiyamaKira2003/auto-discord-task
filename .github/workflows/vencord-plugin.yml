@@ -1,0 +1,109 @@
+name: Vencord plugin build
+
+# The plugin sources live at the repo root so UserpluginInstaller can clone this
+# repo straight into src/userplugins. That layout is load-bearing and invisible
+# from inside this repo: Vencord only picks up index.ts(x) and native.ts from the
+# top level of a plugin folder, so moving them back into a subdirectory would
+# silently stop the plugin from building. This job is the guard for that.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays, 06:00 UTC
+  push:
+    branches: [main, "feat/**", "fix/**"]
+    paths:
+      - "*.ts"
+      - "*.tsx"
+      - "tests/**/*.ts"
+      - ".github/workflows/vencord-plugin.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "*.ts"
+      - "*.tsx"
+      - "tests/**/*.ts"
+      - ".github/workflows/vencord-plugin.yml"
+
+jobs:
+  build:
+    name: Build Vencord with Audisk
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Vencord
+        uses: actions/checkout@v6
+        with:
+          repository: Vendicated/Vencord
+          path: vencord
+
+      - name: Check out this repo as a userplugin
+        uses: actions/checkout@v6
+        with:
+          path: vencord/src/userplugins/audisk
+
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: vencord/package.json
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "pnpm"
+          cache-dependency-path: vencord/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: vencord
+        run: pnpm install --frozen-lockfile
+
+      - name: Test per-quest lifecycle
+        working-directory: vencord
+        run: pnpm exec tsx --test src/userplugins/audisk/tests/*.test.ts
+
+      - name: TypeScript
+        working-directory: vencord
+        run: pnpm testTsc
+
+      - name: Lint plugin
+        working-directory: vencord
+        run: pnpm lint src/userplugins/audisk
+
+      - name: Build
+        working-directory: vencord
+        run: pnpm run build
+
+      - name: Assert the plugin made it into the build
+        working-directory: vencord
+        run: |
+          set -euo pipefail
+
+          # index.tsx was resolved as the plugin entry, not the userscript
+          grep -q "Audisk" dist/renderer.js
+
+          # native.ts compiled into the main process bundle, so the CSP-exempt
+          # discordsays POSTs behind the ACHIEVEMENT bypass still work
+          grep -q "Audisk" dist/vencordDesktopMain.js
+          grep -q "discordsays" dist/vencordDesktopMain.js
+
+          # slash command, semantic enrollment wake-up and the narrow companion surface are bundled
+          grep -q "Control the Audisk auto-quest engine" dist/renderer.js
+          grep -q "Pause one quest" dist/renderer.js
+          grep -q "Resume one quest" dist/renderer.js
+          grep -q "QUESTS_ENROLL_SUCCESS" dist/renderer.js
+          grep -q "getControlSnapshot" dist/renderer.js
+          grep -q "subscribeControlState" dist/renderer.js
+          grep -q "subscribeEvents" dist/renderer.js
+          grep -q "getSchedulerSnapshot" dist/renderer.js
+          grep -q "subscribeSchedulerState" dist/renderer.js
+          grep -q "controlAll" dist/renderer.js
+          grep -q "controlQuest" dist/renderer.js
+          grep -q "Unsupported Audisk global task action" dist/renderer.js
+          grep -q "Unsupported Audisk quest action" dist/renderer.js
+
+          # index.js is the standalone userscript and must never be bundled
+          if grep -q "audiskLock" dist/renderer.js; then
+            echo "index.js leaked into the Vencord build" >&2
+            exit 1
+          fi
+
+          echo "Audisk is in the build."

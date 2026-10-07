@@ -1,0 +1,52 @@
+name: Unit tests
+
+# The full Vencord build job is the integration guard, but it clones Vencord and
+# installs ~300 MB of dependencies before a single assertion runs. Every module
+# under test here is Vencord-free on purpose, so this job answers the same
+# question in seconds on every push.
+
+on:
+  push:
+    branches: [main, "feat/**", "fix/**"]
+    paths:
+      - "*.ts"
+      - "tests/**/*.ts"
+      - "tools/audisk-relay/**"
+      - "tools/tests/relay-regression.py"
+      - ".github/workflows/tests.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "*.ts"
+      - "tests/**/*.ts"
+      - "tools/audisk-relay/**"
+      - "tools/tests/relay-regression.py"
+      - ".github/workflows/tests.yml"
+
+jobs:
+  unit:
+    name: node --test (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22", "24"]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node ${{ matrix.node }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Run the test suite
+        run: npx --yes tsx@4 --test tests/*.test.ts
+
+  relay:
+    name: Relay guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Relay regression
+        run: python3 tools/tests/relay-regression.py
