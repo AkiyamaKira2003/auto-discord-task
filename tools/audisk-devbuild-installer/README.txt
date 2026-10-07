@@ -2,7 +2,7 @@ AUDISK BY KIRAA - VEN CORD AUTO-UPDATE INSTALLER
 ==================================================
 
 Owner / maintainer: Kiraa (AkiyamaKira2003)
-Version: v4.11.5
+Version: v4.11.6
 Project: https://github.com/AkiyamaKira2003/auto-discord-task
 Plugin name: Audisk
 Plugin folder: src\userplugins\audisk
@@ -10,11 +10,11 @@ Default build folder: %LOCALAPPDATA%\AudiskVencord
 
 QUICK INSTALL
 -------------
-From the repository root, RUN.cmd is the preferred clean-install path for Discord Canary.
+From the repository root, INSTALL.cmd is the preferred clean-install path. It asks which Discord client to target: 1 Stable, 2 Canary, or 3 PTB.
 
-RUN installs Audisk from the current repository and contains no migration behavior for earlier product names.
+INSTALL installs Audisk from the current repository and contains no migration behavior for earlier product names.
 
-Packaged users can run INSTALL-autoupdate.cmd directly.
+Packaged users run INSTALL.cmd and get the same 1/2/3 client selector.
 
 WHAT THE INSTALLER DOES
 -----------------------
@@ -30,7 +30,7 @@ WHAT THE INSTALLER DOES
 
 LOCAL DEVELOPMENT SOURCE
 ------------------------
-install-autoupdate.ps1 accepts -LocalPluginSource. RUN passes the current repository root, which lets a fresh clone install the current Audisk source directly.
+install-autoupdate.ps1 remains the internal backend. The root INSTALL passes the current repository through -LocalPluginSource, while the packaged INSTALL uses its staged plugin source. Both paths share the same branch selector and full install pipeline.
 
 UPDATE
 ------
@@ -38,7 +38,7 @@ Run UPDATE.cmd. It refreshes Vencord and Audisk, then builds and verifies before
 
 UNINSTALL
 ---------
-Run UNINSTALL.cmd. The uninstaller restores Discord only when its app.asar points at this AudiskVencord patcher. Do not manually delete AudiskVencord while Discord still points at it.
+Run UNINSTALL.cmd for the standalone installer path, or use the darker-red Uninstall action in the Audisk dashboard. The dashboard confirmation remembers whether Vencord existed before Audisk: it keeps a pre-existing Vencord by default, while a clean machine that received Vencord through Audisk defaults to removing Vencord too. Do not manually delete AudiskVencord while Discord still points at it.
 
 CANARY
 ------

@@ -1,10 +1,10 @@
 # Audisk
 
-[![Version](https://img.shields.io/badge/v4.11.5-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://github.com/AkiyamaKira2003/auto-discord-task/releases/latest)
+[![Version](https://img.shields.io/badge/v4.11.6-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://github.com/AkiyamaKira2003/auto-discord-task/releases/latest)
 [![Stars](https://img.shields.io/github/stars/AkiyamaKira2003/auto-discord-task?style=for-the-badge&color=faa61a)](https://github.com/AkiyamaKira2003/auto-discord-task/stargazers)
 [![License](https://img.shields.io/badge/MIT-green?style=for-the-badge)](LICENSE)
 
-Version: v4.11.5
+Version: v4.11.6
 
 Completes Discord Quests without playing them. It reads the quests you're eligible for, tells Discord you're doing the thing the quest asks for, and waits for Discord to credit the progress.
 
@@ -44,17 +44,17 @@ If you already build Vencord yourself, skip the installers and see [`docs/VENCOR
 
 ## Quick start, Audisk plugin
 
-For a clean Windows install with **Discord Canary** already installed, clone or download this repository and run:
+For a Windows install, clone or download this repository and run:
 
 ```text
-RUN.cmd
+INSTALL.cmd
 ```
 
-`RUN.cmd` uses the repository itself as the plugin source. It prepares `%LOCALAPPDATA%\AudiskVencord`, installs the Audisk userplugin under `src\userplugins\audisk`, builds Vencord, verifies the generated renderer contains Audisk, patches Canary, and reopens the client.
+`INSTALL.cmd` shows a 1/2/3 client menu for **Discord Stable / Canary / PTB**, then uses the repository itself as the plugin source. It prepares `%LOCALAPPDATA%\AudiskVencord`, installs the Audisk userplugin under `src\userplugins\audisk`, builds Vencord, verifies the generated renderer contains Audisk, patches the selected client, and reopens it.
 
 After Discord starts, open **Settings -> Vencord -> Plugins**, search for **Audisk**, and enable it if needed. The plugin command is `/audisk`.
 
-The floating Audisk dashboard also includes the Discord-styled `akiyamakira2003` profile button. It opens Kiraa's native Discord profile modal in the client.
+The floating Audisk dashboard keeps the Discord-styled `akiyamakira2003` profile button on the left and opens Kiraa's native Discord profile modal in the client. The `?` button on the right shows the hotkeys: `Shift + .` toggles the panel, `Ctrl + Shift + S` starts/stops, and `Ctrl + Shift + P` pauses/resumes.
 
 ## Quick start, userscript
 
@@ -125,7 +125,7 @@ const CONFIG = {
 };
 ```
 
-The plugin has the same options as real settings, plus auto-start, **Orb quests only**, per-type concurrency, and the achievement bypass toggle. Orb quests only is off by default; when enabled, quests with no Orb payout are not enrolled or started, and switching it off returns them to the next scan. They're documented in [`docs/VENCORD-PLUGIN.md`](docs/VENCORD-PLUGIN.md).
+The plugin has the same options as real settings, plus auto-start, **Orb quests only**, per-type concurrency, and the achievement bypass toggle. The dashboard gear menu exposes those same Vencord settings through the same persisted settings proxy, so changing a value in either place updates the other. Orb quests only is off by default; when enabled, quests with no Orb payout are not enrolled or started, and switching it off returns them to the next scan. They're documented in [`docs/VENCORD-PLUGIN.md`](docs/VENCORD-PLUGIN.md).
 
 ## When things go wrong
 
@@ -181,6 +181,15 @@ Bug reports, PRs and docs all welcome. [`CONTRIBUTING.md`](CONTRIBUTING.md) has 
 ---
 
 ## Changelog
+
+### v4.11.6
+- **Dashboard controls now mirror Vencord settings directly.** The gear menu exposes auto-start, auto-enroll, Orb quests only, enrollment watching, achievement bypass, reward claiming, hidden activity, completion sound, verbose logging, game-session tail, and game/video concurrency. Writes go through Vencord's persisted settings proxy and the dashboard subscribes to the same store, so edits made in Vencord Settings are reflected back immediately.
+- **Footer and hotkeys.** The `akiyamakira2003` Discord profile button is left-aligned and vertically centered inside its Discord-blue frame. A small `?` on the right shows or pins the hotkey guide. `Shift + .` toggles the dashboard, `Ctrl + Shift + S` starts/stops Audisk, and `Ctrl + Shift + P` pauses/resumes the active queue.
+- **Native Quests status.** Audisk adds a small status marker beside Discord's Quests entry: one green dot while idle and three Kiraa-blue dots with a soft overlapping brightness wave while a quest is actively running. The marker is reattached after Discord UI rerenders without recreating the dots unless the state actually changes, so the animation stays smooth.
+- **In-dashboard uninstall.** The gear menu has a darker-red Uninstall action with a confirmation popup. Install state records whether Vencord existed before Audisk: the “Uninstall Vencord too” box defaults off for a pre-existing Vencord setup and on when Audisk introduced Vencord. Keeping Vencord removes Audisk and rebuilds/restores plain Vencord; removing Vencord restores the original Discord client.
+
+- **Compact settings panel.** The dashboard settings menu is capped at 365px and scrolls internally, so every option remains reachable without making the Audisk panel taller than the main UI.
+- **Canonical installer.** `INSTALL.cmd` is now the single public install entrypoint. It offers `1 = Discord Stable`, `2 = Discord Canary`, `3 = Discord PTB`, and both the repository install and packaged devbuild use the same full build/verify/rollback backend. The older public RUN entrypoint was removed so there is only one supported installation path to document and maintain.
 
 ### v4.11.5
 - **Orb quests only for the Vencord plugin.** A new off-by-default setting runs only quests that actually pay Orbs. Audisk checks every reward entry, not only the first one; non-Orb quests are left unenrolled and unstarted, and the run summary reports them as `left out because they pay no Orbs` instead of failures. The filter is revocable, so turning it off mid-run puts those quests back into rotation on the next scan. Work already queued/running is allowed to finish.

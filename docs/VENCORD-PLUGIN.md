@@ -1,6 +1,6 @@
 # Audisk Vencord plugin
 
-Version: v4.11.5
+Version: v4.11.6
 
 Audisk is a Vencord userplugin for Discord Quest automation maintained by **Kiraa / AkiyamaKira2003**.
 
@@ -8,9 +8,9 @@ Repository: https://github.com/AkiyamaKira2003/auto-discord-task
 
 ## Install
 
-For the repository, double-click `RUN.cmd`. It targets Discord Canary, installs the local Audisk source under `src/userplugins/audisk`, builds Vencord and patches Canary.
+For the repository, double-click `INSTALL.cmd`, choose `1` Stable, `2` Canary, or `3` PTB, and the installer builds Vencord with the local Audisk source under `src/userplugins/audisk` before patching the selected client.
 
-For a packaged installer, use `tools/audisk-devbuild-installer/INSTALL-autoupdate.cmd`.
+For a packaged installer, use `tools/audisk-devbuild-installer/INSTALL.cmd`; it uses the same 1/2/3 client menu and the same full backend.
 
 ## Plugin identity
 
@@ -36,13 +36,17 @@ Pause/resume state is account- and session-scoped. A resumed Quest is scheduled 
 
 ## Dashboard
 
-The plugin mounts a floating dashboard with START/STOP, PAUSE/RESUME, health, Quest progress and structured logs. `Shift + .` toggles visibility.
+The plugin mounts a floating dashboard with START/STOP, PAUSE/RESUME, health, Quest progress and structured logs. `Shift + .` toggles visibility, `Ctrl + Shift + S` starts/stops, and `Ctrl + Shift + P` pauses/resumes.
 
-The footer has a Discord-colored button with the Discord icon and `akiyamakira2003`. Clicking it opens Kiraa's native Discord profile modal inside the client.
+The footer keeps a Discord-colored `akiyamakira2003` button on the left and a `?` hotkey helper on the right. Clicking the profile button opens Kiraa's native Discord profile modal inside the client.
+
+Audisk also attaches a compact status marker to Discord's native Quests entry. Idle is one green dot; an actively running quest is three Kiraa-blue dots with a soft overlapping brightness wave. The dots are preserved across ordinary Discord DOM mutations so their CSS animation is not restarted every frame.
 
 ## Settings
 
 The plugin exposes settings for auto start, auto enroll, Orb-only runs, watching for enrollments, achievement bypass consent, reward claim attempts, hidden activity, game-session tail, concurrency, sounds and verbose logging.
+
+The dashboard gear menu controls those same settings rather than maintaining a second configuration. It writes through Vencord's smart settings proxy and subscribes to `plugins.Audisk`, so the menu and Vencord's plugin settings stay synchronized in both directions. The dropdown is capped at 365px and scrolls internally, keeping the main Audisk panel compact while every setting remains reachable.
 
 Orb quests only is off by default. When enabled, a quest is eligible only when at least one entry in rewardsConfig.rewards carries a positive Orb payout. Non-Orb quests are not enrolled or started and are reported as left out rather than failed. The filter is intentionally revocable: it does not add quests to the permanent skipped set, so turning the setting off returns them to the next scan. Work already queued or running when the setting is enabled is allowed to finish normally.
 
@@ -76,6 +80,9 @@ A valid production build should satisfy all of the following:
 - `/audisk status` responds
 - enabling Orb quests only leaves non-Orb quests unenrolled and unstarted
 - profile button opens user ID `581419585249607710`
+- dashboard settings stay synchronized with Vencord plugin settings
+- Quests navigation shows the Audisk idle/running status marker
+- uninstall confirmation uses the recorded pre-install Vencord state for its default
 - disabling the plugin removes watchers, patches and dashboard elements
 
 ## License

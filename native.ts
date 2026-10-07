@@ -9,7 +9,10 @@
  * runs without CSP restrictions.
  */
 
-import { IpcMainInvokeEvent } from "electron";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+import { IpcMainInvokeEvent, shell } from "electron";
 
 // This is the real trust boundary: the renderer could be compromised and these handlers run
 // in the privileged, CSP-free main process. Validate every renderer-supplied value that shapes
@@ -33,6 +36,58 @@ export interface DiscordSaysResponse {
     ok: boolean;
     status: number;
     body: string;
+}
+
+export interface AudiskInstallInfo {
+    available: boolean;
+    hadVencordBefore: boolean | null;
+    defaultRemoveVencord: boolean;
+    branch: string;
+}
+
+function audiskInstallDir(): string | null {
+    const base = process.env.LOCALAPPDATA;
+    return base ? join(base, "AudiskVencord") : null;
+}
+
+export async function getInstallInfo(_: IpcMainInvokeEvent): Promise<AudiskInstallInfo> {
+    const installDir = audiskInstallDir();
+    if (!installDir) return { available: false, hadVencordBefore: null, defaultRemoveVencord: false, branch: "canary" };
+
+    const launcher = join(installDir, ".audisk-uninstall.cmd");
+    const statePath = join(installDir, ".audisk-install-state.json");
+    let hadVencordBefore: boolean | null = null;
+    let branch = "canary";
+    try {
+        const state = JSON.parse(readFileSync(statePath, "utf8"));
+        if (typeof state?.hadVencordBefore === "boolean") hadVencordBefore = state.hadVencordBefore;
+        if (typeof state?.branch === "string" && /^(stable|canary|ptb)$/.test(state.branch)) branch = state.branch;
+    } catch {}
+
+    return {
+        available: existsSync(launcher),
+        hadVencordBefore,
+        defaultRemoveVencord: hadVencordBefore === false,
+        branch,
+    };
+}
+
+export async function uninstallAudisk(_: IpcMainInvokeEvent, removeVencord: boolean): Promise<{ started: boolean; error?: string; }> {
+    if (typeof removeVencord !== "boolean") return { started: false, error: "invalid option" };
+    const installDir = audiskInstallDir();
+    if (!installDir) return { started: false, error: "LOCALAPPDATA is unavailable" };
+
+    const launcher = join(installDir, ".audisk-uninstall.cmd");
+    const requestPath = join(installDir, ".audisk-uninstall-request.json");
+    if (!existsSync(launcher)) return { started: false, error: "uninstall helper is not installed" };
+
+    try {
+        writeFileSync(requestPath, JSON.stringify({ removeVencord }), { encoding: "utf8" });
+        const error = await shell.openPath(launcher);
+        return error ? { started: false, error } : { started: true };
+    } catch (error) {
+        return { started: false, error: error instanceof Error ? error.message : String(error) };
+    }
 }
 
 async function discordsaysFetch(url: string, headers: Record<string, string>, body: string): Promise<DiscordSaysResponse> {

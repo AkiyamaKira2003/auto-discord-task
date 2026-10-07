@@ -28,7 +28,7 @@ $Common = Join-Path $PSScriptRoot 'installer-common.ps1'
 if (-not (Test-Path -LiteralPath $Common -PathType Leaf)) { Fail 'installer-common.ps1 is missing. Re-download/extract the full installer zip.' }
 . $Common
 
-if (-not (Test-Path (Join-Path $InstallDir '.git'))) { Fail "No AudiskVencord install found at $InstallDir. Run INSTALL-autoupdate.cmd first." }
+if (-not (Test-Path (Join-Path $InstallDir '.git'))) { Fail "No AudiskVencord install found at $InstallDir. Run INSTALL.cmd first." }
 if (-not (Test-Path $PluginSrc)) { Fail 'plugin source folder not found next to this script. Extract the whole zip.' }
 
 Info 'Updating Vencord source...'

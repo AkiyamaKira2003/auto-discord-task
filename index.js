@@ -5,7 +5,7 @@
 
     const CONFIG = {
         NAME: "Audisk",
-        VERSION: "v4.11.5",
+        VERSION: "v4.11.6",
         THEME: "#5865F2",             // discord blurple
         SUCCESS: "#3BA55C",
         WARN: "#faa61a",

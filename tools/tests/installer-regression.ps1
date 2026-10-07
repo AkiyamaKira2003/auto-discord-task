@@ -8,6 +8,12 @@ $Helper = Join-Path $DevbuildDir 'installer-common.ps1'
 $BundleVerifier = Join-Path $BundleDir 'verify-vencord-target.ps1'
 $Workflow = Join-Path $RepoRoot '.github\workflows\installer.yml'
 $Packager = Join-Path $RepoRoot 'tools\package-release.ps1'
+$RuntimeUninstall = Join-Path $DevbuildDir 'uninstall-runtime.ps1'
+$RuntimeUninstallLauncher = Join-Path $DevbuildDir 'uninstall-runtime.cmd'
+$RootInstallCmd = Join-Path $RepoRoot 'INSTALL.cmd'
+$RootInstall = Join-Path $RepoRoot 'install.ps1'
+$MenuInstallCmd = Join-Path $DevbuildDir 'INSTALL.cmd'
+$MenuInstall = Join-Path $DevbuildDir 'install.ps1'
 
 function Assert-True([bool]$Condition, [string]$Message) {
     if (-not $Condition) { throw $Message }
@@ -32,6 +38,18 @@ function Assert-Throws([scriptblock]$Action, [string]$Message) {
 }
 
 Assert-True (Test-Path $Helper) 'installer-common.ps1 is required so install/update/uninstall share one tested Discord/toolchain implementation.'
+Assert-True (Test-Path $RuntimeUninstall) 'The dashboard uninstall runtime helper must ship with the devbuild installer.'
+Assert-True (Test-Path $RuntimeUninstallLauncher) 'The dashboard uninstall launcher must ship with the devbuild installer.'
+Assert-True (Test-Path $RootInstallCmd) 'INSTALL.cmd must be the canonical repository installer entrypoint.'
+Assert-True (Test-Path $RootInstall) 'Root install.ps1 must delegate to the canonical 1/2/3 installer menu.'
+Assert-True (Test-Path $MenuInstallCmd) 'The packaged devbuild installer must expose INSTALL.cmd.'
+Assert-True (Test-Path $MenuInstall) 'The packaged devbuild installer must expose the same 1/2/3 menu logic.'
+$oldRunCmd = ('R' + 'UN.cmd')
+$oldRunScript = ('r' + 'un.ps1')
+$oldBackendCmd = ('INSTALL-auto' + 'update.cmd')
+Assert-False (Test-Path (Join-Path $RepoRoot $oldRunCmd)) 'The obsolete public installer CMD entrypoint must not return.'
+Assert-False (Test-Path (Join-Path $RepoRoot $oldRunScript)) 'The obsolete public installer script wrapper must not return.'
+Assert-False (Test-Path (Join-Path $DevbuildDir $oldBackendCmd)) 'The backend-only installer must not be exposed as a second public CMD entrypoint.'
 . $Helper
 
 Assert-Equal (Resolve-DiscordFlavor -Installed @('stable', 'canary') -Running @('canary')) 'canary' 'Running Canary must win when Stable is also installed.'
@@ -313,6 +331,44 @@ exit /b 0
     Remove-Item $temp -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+$temp = Join-Path ([IO.Path]::GetTempPath()) ("audisk-runtime-uninstall-test-" + [guid]::NewGuid().ToString('N'))
+$oldLocalAppData = $env:LOCALAPPDATA
+$oldAppData = $env:APPDATA
+try {
+    $runtimeRoot = Join-Path $temp 'AudiskVencord'
+    $local = Join-Path $temp 'local'
+    $roaming = Join-Path $temp 'roaming'
+    $resources = Join-Path $local 'DiscordCanary\app-1.0.200\resources'
+    New-Item -ItemType Directory -Force -Path $runtimeRoot, $resources, $roaming | Out-Null
+    Copy-Item -LiteralPath $RuntimeUninstall -Destination (Join-Path $runtimeRoot '.audisk-uninstall.ps1') -Force
+    Set-Content -LiteralPath (Join-Path $resources 'app.asar') -Value 'official-discord' -Encoding ASCII
+    $env:LOCALAPPDATA = $local
+    $env:APPDATA = $roaming
+    $runtimeCopy = Join-Path $runtimeRoot '.audisk-uninstall.ps1'
+    $shellExe = (Get-Process -Id $PID).Path
+    $statePath = Join-Path $runtimeRoot '.audisk-install-state.json'
+
+    @{ stateVersion = 1; branch = 'canary'; hadVencordBefore = $false } | ConvertTo-Json | Set-Content -LiteralPath $statePath -Encoding UTF8
+    $keepPlain = @(& $shellExe -NoProfile -ExecutionPolicy Bypass -File $runtimeCopy -DryRun)
+    Assert-True ($keepPlain -contains 'PLAN=keep_plain_vencord') 'A clean-machine install must keep plain Vencord when the uninstall checkbox is cleared.'
+
+    $removeAll = @(& $shellExe -NoProfile -ExecutionPolicy Bypass -File $runtimeCopy -DryRun -RemoveVencord)
+    Assert-True ($removeAll -contains 'PLAN=remove_vencord') 'Checking Uninstall Vencord too must select the full Vencord removal path.'
+
+    $oldPatcher = Join-Path $temp 'preexisting-vencord\dist\patcher.js'
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $oldPatcher) | Out-Null
+    Set-Content -LiteralPath $oldPatcher -Value '// old Vencord patcher' -Encoding ASCII
+    $serializedOldPatcher = $oldPatcher.Replace('\', '\\')
+    [IO.File]::WriteAllText((Join-Path $runtimeRoot '.audisk-preinstall-app.asar'), "require(`"$serializedOldPatcher`")", (New-Object Text.UTF8Encoding($false)))
+    @{ stateVersion = 1; branch = 'canary'; hadVencordBefore = $true } | ConvertTo-Json | Set-Content -LiteralPath $statePath -Encoding UTF8
+    $restorePrevious = @(& $shellExe -NoProfile -ExecutionPolicy Bypass -File $runtimeCopy -DryRun)
+    Assert-True ($restorePrevious -contains 'PLAN=restore_previous_vencord') 'A valid saved pre-Audisk Vencord patch must be restored when Vencord originally existed.'
+} finally {
+    $env:LOCALAPPDATA = $oldLocalAppData
+    $env:APPDATA = $oldAppData
+    Remove-Item $temp -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 $install = Get-Content (Join-Path $DevbuildDir 'install-autoupdate.ps1') -Raw
 $update = Get-Content (Join-Path $DevbuildDir 'update.ps1') -Raw
 $uninstall = Get-Content (Join-Path $DevbuildDir 'uninstall.ps1') -Raw
@@ -321,6 +377,45 @@ $devReadme = Get-Content (Join-Path $DevbuildDir 'README.txt') -Raw
 $bundle = Get-Content (Join-Path $BundleDir 'INSTALL.cmd') -Raw
 $workflowText = Get-Content $Workflow -Raw
 $packagerText = Get-Content $Packager -Raw
+$runtimeUninstallText = Get-Content $RuntimeUninstall -Raw
+$runtimeUninstallLauncherText = Get-Content $RuntimeUninstallLauncher -Raw
+$rootInstallCmdText = Get-Content $RootInstallCmd -Raw
+$rootInstallText = Get-Content $RootInstall -Raw
+$menuInstallCmdText = Get-Content $MenuInstallCmd -Raw
+$menuInstallText = Get-Content $MenuInstall -Raw
+
+Assert-True ($rootInstallCmdText -match 'install\.ps1.*%\*') 'Root INSTALL.cmd must forward arguments to install.ps1.'
+Assert-True ($menuInstallCmdText -match 'install\.ps1.*%\*') 'Packaged INSTALL.cmd must forward arguments to the same menu wrapper.'
+Assert-True ($rootInstallText -match 'tools\\audisk-devbuild-installer\\install\.ps1') 'Root install.ps1 must delegate to the packaged canonical menu.'
+Assert-True ($menuInstallText -match "Number = '1'.*Branch = 'stable'") 'Installer option 1 must map to Discord Stable.'
+Assert-True ($menuInstallText -match "Number = '2'.*Branch = 'canary'") 'Installer option 2 must map to Discord Canary.'
+Assert-True ($menuInstallText -match "Number = '3'.*Branch = 'ptb'") 'Installer option 3 must map to Discord PTB.'
+$retiredBrandPattern = [regex]::Escape(('Audi' + 'stask')) + '|' + [regex]::Escape(('Ori' + 'on'))
+Assert-False ($rootInstallCmdText -match $retiredBrandPattern) 'Public root INSTALL.cmd must contain no retired-product migration logic.'
+Assert-False ($rootInstallText -match $retiredBrandPattern) 'Public root install.ps1 must contain no retired-product migration logic.'
+Assert-False ($menuInstallCmdText -match $retiredBrandPattern) 'Packaged INSTALL.cmd must contain no retired-product migration logic.'
+Assert-False ($menuInstallText -match $retiredBrandPattern) 'Packaged install.ps1 must contain no retired-product migration logic.'
+
+$tempMenu = Join-Path ([IO.Path]::GetTempPath()) ("audisk-install-selector-test-" + [guid]::NewGuid().ToString('N'))
+$oldMenuLocalAppData = $env:LOCALAPPDATA
+try {
+    $env:LOCALAPPDATA = $tempMenu
+    foreach ($name in @('Discord', 'DiscordCanary', 'DiscordPTB')) {
+        New-Item -ItemType Directory -Force -Path (Join-Path $tempMenu $name) | Out-Null
+        Set-Content -LiteralPath (Join-Path $tempMenu "$name\Update.exe") -Value '' -Encoding ASCII
+    }
+    foreach ($case in @(
+        @{ Branch = 'stable'; Expected = 'BRANCH=stable' },
+        @{ Branch = 'canary'; Expected = 'BRANCH=canary' },
+        @{ Branch = 'ptb'; Expected = 'BRANCH=ptb' }
+    )) {
+        $output = @(& $RootInstall -DryRun -DiscordBranch $case.Branch)
+        Assert-True ($output -contains $case.Expected) "Canonical installer failed selector mapping for $($case.Branch)."
+    }
+} finally {
+    $env:LOCALAPPDATA = $oldMenuLocalAppData
+    Remove-Item $tempMenu -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 foreach ($pair in @(@{Name='install-autoupdate.ps1';Text=$install},@{Name='update.ps1';Text=$update},@{Name='uninstall.ps1';Text=$uninstall})) {
     Assert-True ($pair.Text -match 'installer-common\.ps1') "$($pair.Name) must use the shared tested installer helpers."
@@ -340,6 +435,13 @@ Assert-False ($install -match 'corepack is missing') 'Install must not reject su
 Assert-True ($install -match 'Invoke-Pnpm') 'Install must use the shared pnpm invocation that supports Node 25+.'
 Assert-True ($install -match 'Restore-VencordAppAsar') 'Install rollback must use the checked restore helper when Vencord unpatch does not verify.'
 Assert-True ($install -match 'rollback could not be verified') 'Install must fail closed when rollback cannot be verified.'
+Assert-True ($install -match 'hadVencordBefore') 'Install must record whether Vencord existed before Audisk so dashboard uninstall can choose a safe default.'
+Assert-True ($install -match '\.audisk-install-state\.json') 'Install must persist the original-client state for dashboard uninstall.'
+Assert-True ($install -match 'uninstall-runtime\.ps1') 'Install must deploy the dashboard uninstall helper.'
+Assert-True ($runtimeUninstallText -match 'Test-SnapshotPatcherExists') 'Dashboard uninstall must verify a saved pre-Audisk Vencord target still exists before restoring it.'
+Assert-True ($runtimeUninstallText -match 'corepack pnpm build') 'Keeping Vencord on a clean-machine install must rebuild plain Vencord after removing Audisk.'
+Assert-True ($runtimeUninstallText -match 'Restore-OfficialDiscord') 'Removing Vencord too must restore the official Discord client.'
+Assert-True ($runtimeUninstallLauncherText -match 'audisk-uninstall-request\.json') 'The dashboard launcher must consume the confirmed uninstall options written by the native helper.'
 Assert-True ($update -match '\$fetchCode') 'Plugin update fallback must record git fetch success explicitly.'
 Assert-True ($update -match '\$resetCode') 'Plugin update fallback must record git reset success explicitly.'
 Assert-True ($update -match '\$fetchCode\s*-eq\s*0\s*-and\s*\$resetCode\s*-eq\s*0') 'A stale FETCH_HEAD reset must not be reported as a successful plugin update.'

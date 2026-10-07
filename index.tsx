@@ -44,7 +44,7 @@ import { settings } from "./settings";
  * not say which build it came from and neither could the person triaging it (issue #66).
  * tools/package-release.ps1 refuses to package if this and the userscript disagree.
  */
-export const PLUGIN_VERSION = "v4.11.5";
+export const PLUGIN_VERSION = "v4.11.6";
 
 
 /*

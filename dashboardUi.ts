@@ -6,6 +6,8 @@
  * It never starts a second Audisk engine: every control delegates to the plugin lifecycle.
  */
 
+import { SettingsStore } from "@api/Settings";
+import type { PluginNative } from "@utils/types";
 import { openUserProfileModal, SelectedChannelStore, SelectedGuildStore, UserUtils } from "@webpack/common";
 
 import {
@@ -15,6 +17,7 @@ import {
     subscribeDashboard,
 } from "./audisk";
 import { type CompanionEventLevel,subscribeCompanionEvents } from "./companionEvents";
+import { settings } from "./settings";
 
 export interface FloatingDashboardControls {
     version: string;
@@ -30,6 +33,39 @@ const STYLE_ID = "audisk-kiraa-styles";
 const MAX_LOGS = 50;
 const OWNER_USER_ID = "581419585249607710";
 const OWNER_USERNAME = "akiyamakira2003";
+const NATIVE_QUEST_STATUS_ID = "audisk-native-quest-status";
+const Native = VencordNative.pluginHelpers.Audisk as PluginNative<typeof import("./native")>;
+
+type BooleanSettingKey =
+    | "autoStart"
+    | "autoEnroll"
+    | "orbQuestsOnly"
+    | "watchForEnrollments"
+    | "achievementBypass"
+    | "tryToClaimReward"
+    | "hideActivity"
+    | "playSound"
+    | "verboseLogging";
+
+type NumberSettingKey = "playSessionTail" | "gameConcurrency" | "videoConcurrency";
+
+const BOOLEAN_SETTINGS: Array<{ key: BooleanSettingKey; label: string; hint: string; }> = [
+    { key: "autoStart", label: "Auto start", hint: "Start Audisk when the plugin loads." },
+    { key: "autoEnroll", label: "Auto enroll", hint: "Accept eligible quests automatically." },
+    { key: "orbQuestsOnly", label: "Orb quests only", hint: "Leave non-Orb quests untouched." },
+    { key: "watchForEnrollments", label: "Watch enrollments", hint: "Wake Audisk when you accept a quest." },
+    { key: "achievementBypass", label: "Achievement bypass", hint: "Allow the OAuth activity bypass." },
+    { key: "tryToClaimReward", label: "Auto claim", hint: "Try to claim rewards after completion." },
+    { key: "hideActivity", label: "Hide activity", hint: "Hide the temporary Playing status." },
+    { key: "playSound", label: "Completion sound", hint: "Play a tone when work completes." },
+    { key: "verboseLogging", label: "Verbose logging", hint: "Promote Audisk debug logs." },
+];
+
+const NUMBER_SETTINGS: Array<{ key: NumberSettingKey; label: string; hint: string; values: number[]; suffix?: string; }> = [
+    { key: "playSessionTail", label: "Game tail", hint: "Maximum randomized post-completion presence.", values: [0, 1, 2, 3, 5, 8], suffix: " min" },
+    { key: "gameConcurrency", label: "Game concurrency", hint: "Parallel game quests.", values: [1, 2, 3] },
+    { key: "videoConcurrency", label: "Video concurrency", hint: "Parallel video quests.", values: [1, 2, 3, 4] },
+];
 
 function el<K extends keyof HTMLElementTagNameMap>(
     tag: K,
@@ -106,7 +142,9 @@ function installStyle(): HTMLStyleElement {
             to { transform: translateY(0); opacity: 1; }
         }
         #${ROOT_ID} {
-            position: fixed; top: 32px; right: 20px; width: 380px; max-height: 53vh;
+            --audisk-panel-height: min(560px, calc(100vh - 96px));
+            position: fixed; top: 32px; right: 20px; width: 380px;
+            height: var(--audisk-panel-height); max-height: var(--audisk-panel-height);
             display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box;
             z-index: 1002; user-select: none; -webkit-app-region: no-drag;
             color: var(--text-default); background: var(--background-base-low);
@@ -159,10 +197,13 @@ function installStyle(): HTMLStyleElement {
         }
         #${ROOT_ID} .ok-link-btn:hover { color: var(--text-default); }
         #${ROOT_ID} .ok-options {
-            position: absolute; right: 0; top: 28px; width: 170px; z-index: 4;
+            position: absolute; right: 0; top: 28px; width: 286px; z-index: 4;
             display: none; padding: 8px; border-radius: var(--radius-sm);
             background: var(--background-base-low); border: 1px solid var(--border-muted);
             box-shadow: var(--shadow-button-overlay);
+            max-height: min(365px, calc(var(--audisk-panel-height) - 92px)); overflow-y: auto;
+            overscroll-behavior: contain; scrollbar-gutter: stable; scrollbar-width: thin;
+            scrollbar-color: var(--scrollbar-auto-scrollbar-color-thumb) transparent;
         }
         #${ROOT_ID} .ok-options.open { display: flex; flex-direction: column; gap: 6px; }
         #${ROOT_ID} .ok-options button {
@@ -172,6 +213,39 @@ function installStyle(): HTMLStyleElement {
             font-family: inherit; text-align: left;
         }
         #${ROOT_ID} .ok-options .danger { color: var(--text-feedback-critical); }
+        #${ROOT_ID} .ok-options .uninstall {
+            color: #ff5d63; background: color-mix(in srgb, #8f1820 42%, var(--background-base-low));
+            border-color: color-mix(in srgb, #ff5d63 50%, var(--border-muted)); font-weight: 800;
+        }
+        #${ROOT_ID} .ok-options .uninstall:hover {
+            color: #fff; background: color-mix(in srgb, #a61922 70%, var(--background-base-low));
+        }
+        #${ROOT_ID} .ok-options-title {
+            margin: 3px 2px 1px; color: var(--text-muted); font-size: 9px; font-weight: 800;
+            letter-spacing: .7px; text-transform: uppercase;
+        }
+        #${ROOT_ID} .ok-setting-row {
+            display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px;
+            padding: 7px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-muted);
+            background: color-mix(in srgb, var(--control-secondary-background-default) 72%, transparent);
+        }
+        #${ROOT_ID} .ok-setting-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+        #${ROOT_ID} .ok-setting-label { font-size: 10px; font-weight: 750; color: var(--text-default); }
+        #${ROOT_ID} .ok-setting-hint { font-size: 9px; line-height: 1.25; color: var(--text-muted); }
+        #${ROOT_ID} .ok-setting-check {
+            appearance: auto; -webkit-appearance: checkbox;
+            width: 16px; height: 16px; margin: 0; flex: 0 0 auto; cursor: pointer;
+            accent-color: #5865F2;
+        }
+        #${ROOT_ID} .ok-setting-check:focus-visible {
+            outline: 2px solid color-mix(in srgb, #5865F2 70%, white);
+            outline-offset: 2px;
+        }
+        #${ROOT_ID} .ok-setting-select {
+            min-width: 68px; border: 1px solid var(--border-muted); border-radius: 6px;
+            background: var(--input-background); color: var(--text-default); padding: 4px 6px;
+            font: 700 10px var(--font-primary); outline: none;
+        }
         #${ROOT_ID} .ok-body {
             min-height: 0; flex: 1 1 auto; overflow-y: auto; padding: 12px;
             display: flex; flex-direction: column;
@@ -241,26 +315,106 @@ function installStyle(): HTMLStyleElement {
         #${ROOT_ID} .ok-log.error { color: var(--text-feedback-critical); }
         #${ROOT_ID} .ok-log.debug { color: #949ba4; }
         #${ROOT_ID} .ok-footer {
-            flex: 0 0 auto; display: flex; justify-content: flex-end; align-items: center;
+            flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center;
             padding: 8px 12px; border-top: 1px solid var(--border-subtle);
-            background: var(--background-base-low);
+            background: var(--background-base-low); position: relative;
         }
         #${ROOT_ID} .ok-discord-profile {
-            display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
-            border: 1px solid #5865F2; border-radius: 8px; padding: 6px 9px;
+            display: inline-flex; align-items: center; justify-content: center; gap: 7px; cursor: pointer;
+            border: 1px solid #5865F2; border-radius: 8px; min-height: 30px; padding: 0 10px;
             color: #c9ceff; background: color-mix(in srgb, #5865F2 14%, transparent);
-            font-family: inherit; font-size: 11px; font-weight: 700;
+            font-family: inherit; font-size: 11px; font-weight: 700; line-height: 1;
             transition: background .16s ease, color .16s ease, box-shadow .16s ease;
         }
         #${ROOT_ID} .ok-discord-profile:hover {
             color: #fff; background: color-mix(in srgb, #5865F2 28%, transparent);
             box-shadow: 0 0 0 2px color-mix(in srgb, #5865F2 18%, transparent);
         }
-        #${ROOT_ID} .ok-discord-profile svg { flex: 0 0 auto; }
-        #${ROOT_ID} ::-webkit-scrollbar { width: 4px; }
+        #${ROOT_ID} .ok-discord-profile svg { flex: 0 0 auto; display: block; }
+        #${ROOT_ID} .ok-discord-profile span { display: inline-flex; align-items: center; line-height: 1; }
+        #${ROOT_ID} .ok-help-wrap { position: relative; display: flex; align-items: center; }
+        #${ROOT_ID} .ok-help {
+            width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
+            border: 1px solid var(--border-muted); border-radius: 50%; color: var(--text-muted);
+            background: transparent; cursor: pointer; font: 800 12px var(--font-primary);
+            transition: color .15s ease, background .15s ease, border-color .15s ease;
+        }
+        #${ROOT_ID} .ok-help:hover, #${ROOT_ID} .ok-help.active {
+            color: #fff; border-color: #61d5ff; background: color-mix(in srgb, #61d5ff 16%, transparent);
+        }
+        #${ROOT_ID} .ok-help-popover {
+            position: absolute; right: 0; bottom: 32px; width: 224px; display: none;
+            padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-muted);
+            background: var(--background-base-low); box-shadow: var(--shadow-button-overlay);
+            color: var(--text-default); font-size: 10px; line-height: 1.45; z-index: 5;
+        }
+        #${ROOT_ID} .ok-help-wrap:hover .ok-help-popover,
+        #${ROOT_ID} .ok-help-wrap.open .ok-help-popover { display: block; }
+        #${ROOT_ID} .ok-help-title { font-size: 11px; font-weight: 800; color: #61d5ff; margin-bottom: 5px; }
+        #${ROOT_ID} .ok-help-line { display: flex; justify-content: space-between; gap: 10px; margin: 3px 0; }
+        #${ROOT_ID} .ok-help-key {
+            white-space: nowrap; border: 1px solid var(--border-muted); border-radius: 4px;
+            padding: 1px 5px; background: var(--background-mod-muted); font: 700 9px Consolas, monospace;
+        }
+        #${ROOT_ID} .ok-confirm-backdrop {
+            position: absolute; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+            padding: 18px; background: rgb(0 0 0 / 58%); backdrop-filter: blur(2px);
+        }
+        #${ROOT_ID} .ok-confirm {
+            width: 100%; max-width: 330px; padding: 14px; border-radius: 10px;
+            background: var(--background-base-low); border: 1px solid var(--border-muted);
+            box-shadow: var(--shadow-button-overlay);
+        }
+        #${ROOT_ID} .ok-confirm-title { color: #ff6b70; font-size: 14px; font-weight: 850; margin-bottom: 7px; }
+        #${ROOT_ID} .ok-confirm-text { color: var(--text-muted); font-size: 10px; line-height: 1.45; margin-bottom: 10px; }
+        #${ROOT_ID} .ok-confirm-check {
+            display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 7px;
+            background: var(--background-mod-muted); color: var(--text-default); font-size: 10px;
+        }
+        #${ROOT_ID} .ok-confirm-check input { accent-color: #5865F2; }
+        #${ROOT_ID} .ok-confirm-note { margin-top: 7px; color: var(--text-muted); font-size: 9px; line-height: 1.35; }
+        #${ROOT_ID} .ok-confirm-actions { display: flex; gap: 8px; margin-top: 12px; }
+        #${ROOT_ID} .ok-confirm-actions button {
+            flex: 1; padding: 7px 8px; border-radius: 7px; cursor: pointer;
+            border: 1px solid var(--border-muted); background: var(--control-secondary-background-default);
+            color: var(--text-default); font: 750 10px var(--font-primary);
+        }
+        #${ROOT_ID} .ok-confirm-actions .confirm-uninstall {
+            color: #fff; border-color: #b7252f; background: #8f1820;
+        }
+        #${ROOT_ID} .ok-confirm-actions .confirm-uninstall:hover { background: #a61922; }
+        #${ROOT_ID} ::-webkit-scrollbar { width: 5px; }
+        #${ROOT_ID} .ok-options::-webkit-scrollbar { width: 6px; }
+        #${ROOT_ID} .ok-options::-webkit-scrollbar-track { background: transparent; }
         #${ROOT_ID} ::-webkit-scrollbar-thumb {
             background: var(--scrollbar-auto-scrollbar-color-thumb); border-radius: 4px;
         }
+        #${NATIVE_QUEST_STATUS_ID} {
+            display: inline-flex; align-items: center; justify-content: center; gap: 3px;
+            margin-left: 7px; min-width: 9px; height: 12px; vertical-align: middle;
+            pointer-events: none;
+        }
+        #${NATIVE_QUEST_STATUS_ID} .audisk-idle-dot {
+            width: 7px; height: 7px; border-radius: 50%; background: #43b581;
+            box-shadow: 0 0 0 2px color-mix(in srgb, #43b581 18%, transparent);
+        }
+        @keyframes audiskQuestDotPulse {
+            0%   { opacity: .30; transform: scale(.94); }
+            18%  { opacity: .48; transform: scale(.97); }
+            36%  { opacity: 1;   transform: scale(1.02); }
+            56%  { opacity: .76; transform: scale(1); }
+            76%  { opacity: .46; transform: scale(.97); }
+            100% { opacity: .30; transform: scale(.94); }
+        }
+        #${NATIVE_QUEST_STATUS_ID} .audisk-run-dot {
+            width: 5px; height: 5px; border-radius: 50%; background: #61d5ff;
+            opacity: .30;
+            animation: audiskQuestDotPulse 2.10s cubic-bezier(.45, 0, .55, 1) infinite;
+            box-shadow: 0 0 5px color-mix(in srgb, #61d5ff 42%, transparent);
+            will-change: opacity, transform;
+        }
+        #${NATIVE_QUEST_STATUS_ID} .audisk-run-dot:nth-child(2) { animation-delay: .48s; }
+        #${NATIVE_QUEST_STATUS_ID} .audisk-run-dot:nth-child(3) { animation-delay: .96s; }
     `;
     document.head.appendChild(style);
     return style;
@@ -293,7 +447,53 @@ export function mountFloatingDashboard(controls: FloatingDashboardControls): () 
     const options = el("div", "ok-options");
     const refreshStatusButton = el("button", "", "Refresh status");
     const stopEngineButton = el("button", "danger", "Stop engine");
-    options.append(refreshStatusButton, stopEngineButton);
+    const uninstallButton = el("button", "uninstall", "Uninstall");
+    const settingsTitle = el("div", "ok-options-title", "Audisk settings");
+    const settingNodes = new Map<string, HTMLInputElement | HTMLSelectElement>();
+
+    const makeSettingCopy = (label: string, hint: string) => {
+        const copy = el("div", "ok-setting-copy");
+        copy.append(el("div", "ok-setting-label", label), el("div", "ok-setting-hint", hint));
+        return copy;
+    };
+
+    for (const def of BOOLEAN_SETTINGS) {
+        const row = el("div", "ok-setting-row");
+        const checkbox = el("input", "ok-setting-check") as HTMLInputElement;
+        checkbox.type = "checkbox";
+        checkbox.title = def.hint;
+        checkbox.onchange = event => {
+            event.stopPropagation();
+            (settings.store as any)[def.key] = checkbox.checked;
+        };
+        checkbox.onclick = event => event.stopPropagation();
+        settingNodes.set(def.key, checkbox);
+        row.append(makeSettingCopy(def.label, def.hint), checkbox);
+        options.append(row);
+    }
+
+    for (const def of NUMBER_SETTINGS) {
+        const row = el("div", "ok-setting-row");
+        const select = el("select", "ok-setting-select") as HTMLSelectElement;
+        for (const value of def.values) {
+            const option = document.createElement("option");
+            option.value = String(value);
+            option.textContent = `${value}${def.suffix ?? ""}`;
+            select.appendChild(option);
+        }
+        select.title = def.hint;
+        select.onchange = event => {
+            event.stopPropagation();
+            (settings.store as any)[def.key] = Number(select.value);
+        };
+        select.onclick = event => event.stopPropagation();
+        settingNodes.set(def.key, select);
+        row.append(makeSettingCopy(def.label, def.hint), select);
+        options.append(row);
+    }
+
+    options.prepend(refreshStatusButton, settingsTitle);
+    options.append(stopEngineButton, uninstallButton);
 
     controlsBox.append(statusDot, startStopButton, pauseResumeButton, hideButton, gearButton, options);
     head.append(title, controlsBox);
@@ -305,7 +505,20 @@ export function mountFloatingDashboard(controls: FloatingDashboardControls): () 
     discordProfileButton.type = "button";
     discordProfileButton.title = "Open Kiraa's Discord profile";
     discordProfileButton.append(discordIcon(), el("span", "", OWNER_USERNAME));
-    footer.appendChild(discordProfileButton);
+    const helpWrap = el("div", "ok-help-wrap");
+    const helpButton = el("button", "ok-help", "?");
+    helpButton.type = "button";
+    helpButton.title = "Audisk hotkeys";
+    const helpPopover = el("div", "ok-help-popover");
+    helpPopover.append(
+        el("div", "ok-help-title", "Audisk hotkeys"),
+        (() => { const row = el("div", "ok-help-line"); row.append(el("span", "", "Show / hide"), el("span", "ok-help-key", "Shift + .")); return row; })(),
+        (() => { const row = el("div", "ok-help-line"); row.append(el("span", "", "Start / stop"), el("span", "ok-help-key", "Ctrl + Shift + S")); return row; })(),
+        (() => { const row = el("div", "ok-help-line"); row.append(el("span", "", "Pause / resume"), el("span", "ok-help-key", "Ctrl + Shift + P")); return row; })(),
+        el("div", "ok-setting-hint", "Click ? to pin this help. Click again to close."),
+    );
+    helpWrap.append(helpButton, helpPopover);
+    footer.append(discordProfileButton, helpWrap);
     root.append(head, body, logs, footer);
     document.body.appendChild(root);
 
@@ -313,6 +526,86 @@ export function mountFloatingDashboard(controls: FloatingDashboardControls): () 
     let busy = false;
     let hidden = false;
     let health: "good" | "warn" | "bad" = "good";
+    let questStatusFrame = 0;
+
+    const syncSettingControls = () => {
+        for (const def of BOOLEAN_SETTINGS) {
+            const node = settingNodes.get(def.key) as HTMLInputElement | undefined;
+            if (!node) continue;
+            const on = Boolean((settings.store as any)[def.key]);
+            node.checked = on;
+        }
+        for (const def of NUMBER_SETTINGS) {
+            const node = settingNodes.get(def.key) as HTMLSelectElement | undefined;
+            if (!node) continue;
+            node.value = String((settings.store as any)[def.key]);
+        }
+    };
+
+    const findQuestNavHost = (): HTMLElement | null => {
+        const selectors = [
+            'a[href="/quest-home"]',
+            'a[href^="/quest-home?"]',
+            'a[href="/quests"]',
+            'a[href^="/quests?"]',
+            '[data-list-item-id*="quest" i]',
+        ];
+        for (const selector of selectors) {
+            const found = document.querySelector<HTMLElement>(selector);
+            if (found && !found.closest(`#${ROOT_ID}`)) return found;
+        }
+
+        const labels = new Set(["quests", "nhiệm vụ", "nhiem vu"]);
+        for (const node of document.querySelectorAll<HTMLElement>('a, button, [role="listitem"], [role="link"]')) {
+            if (node.closest(`#${ROOT_ID}`)) continue;
+            const text = node.textContent?.trim().toLocaleLowerCase() ?? "";
+            if (labels.has(text)) return node;
+        }
+        return null;
+    };
+
+    const updateNativeQuestStatus = () => {
+        if (disposed) return;
+        let badge = document.getElementById(NATIVE_QUEST_STATUS_ID);
+        if (!badge) {
+            const host = findQuestNavHost();
+            if (!host) return;
+            badge = el("span");
+            badge.id = NATIVE_QUEST_STATUS_ID;
+            host.appendChild(badge);
+        }
+
+        const activelyRunning = isEngineRunning() && readDashboard().some(entry => entry.status === "RUNNING");
+        const nextState = activelyRunning ? "running" : "idle";
+        badge.setAttribute("aria-label", activelyRunning ? "Audisk is running a quest" : "Audisk is idle");
+        badge.title = activelyRunning ? "Audisk: running" : "Audisk: idle";
+
+        // Do not rebuild these children on every Discord DOM mutation. Recreating them
+        // restarts their CSS animation every frame and makes the three-dot pulse look frozen.
+        if (badge.dataset.audiskState === nextState) return;
+        badge.dataset.audiskState = nextState;
+        badge.replaceChildren();
+        if (activelyRunning) {
+            badge.append(el("span", "audisk-run-dot"), el("span", "audisk-run-dot"), el("span", "audisk-run-dot"));
+        } else {
+            badge.append(el("span", "audisk-idle-dot"));
+        }
+    };
+
+    const scheduleQuestStatusUpdate = () => {
+        if (questStatusFrame || disposed) return;
+        questStatusFrame = requestAnimationFrame(() => {
+            questStatusFrame = 0;
+            updateNativeQuestStatus();
+        });
+    };
+
+    const questNavObserver = new MutationObserver(scheduleQuestStatusUpdate);
+    questNavObserver.observe(document.body, { childList: true, subtree: true });
+
+    const onSettingsChanged = () => syncSettingControls();
+    SettingsStore.addPrefixChangeListener("plugins.Audisk", onSettingsChanged);
+    syncSettingControls();
 
     const setHealth = (next: "good" | "warn" | "bad", message: string) => {
         health = next;
@@ -335,6 +628,7 @@ export function mountFloatingDashboard(controls: FloatingDashboardControls): () 
         if (disposed) return;
         const running = isEngineRunning();
         const entries = sortEntries(readDashboard());
+        scheduleQuestStatusUpdate();
         body.replaceChildren();
 
         if (entries.length === 0) {
@@ -428,8 +722,77 @@ export function mountFloatingDashboard(controls: FloatingDashboardControls): () 
         }
     };
 
+    const showUninstallConfirm = async () => {
+        if (busy || disposed || root.querySelector(".ok-confirm-backdrop")) return;
+        options.classList.remove("open");
+
+        let info: Awaited<ReturnType<typeof Native.getInstallInfo>>;
+        try {
+            info = await Native.getInstallInfo();
+        } catch (error) {
+            log(`Could not read install state: ${error instanceof Error ? error.message : String(error)}`, "error");
+            return;
+        }
+        if (!info.available) {
+            log("Audisk uninstall helper is not installed. Re-run INSTALL.cmd once to install it.", "error");
+            return;
+        }
+
+        const backdrop = el("div", "ok-confirm-backdrop");
+        const modal = el("div", "ok-confirm");
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = info.defaultRemoveVencord;
+        const checkLabel = el("label", "ok-confirm-check");
+        checkLabel.append(checkbox, el("span", "", "Uninstall Vencord too"));
+
+        const stateNote = info.hadVencordBefore === true
+            ? "Vencord existed before Audisk, so this is off by default. Leaving it off restores the previous Vencord setup."
+            : info.hadVencordBefore === false
+                ? "Audisk installed Vencord for this setup, so this is on by default. Turn it off to keep plain Vencord after removing Audisk."
+                : "Original Vencord state is unknown, so this stays off by default to avoid removing more than requested.";
+
+        const actions = el("div", "ok-confirm-actions");
+        const cancel = el("button", "", "Cancel");
+        const confirm = el("button", "confirm-uninstall", "Uninstall");
+        actions.append(cancel, confirm);
+        modal.append(
+            el("div", "ok-confirm-title", "Uninstall Audisk?"),
+            el("div", "ok-confirm-text", "Audisk will stop Discord, remove the plugin, and restore the client according to the option below."),
+            checkLabel,
+            el("div", "ok-confirm-note", stateNote),
+            actions,
+        );
+        backdrop.appendChild(modal);
+        root.appendChild(backdrop);
+
+        const close = () => backdrop.remove();
+        cancel.onclick = close;
+        backdrop.onclick = event => { if (event.target === backdrop) close(); };
+        confirm.onclick = () => void (async () => {
+            confirm.disabled = true;
+            cancel.disabled = true;
+            try {
+                const result = await Native.uninstallAudisk(checkbox.checked);
+                if (!result.started) {
+                    log(`Uninstall could not start: ${result.error ?? "unknown error"}`, "error");
+                    confirm.disabled = false;
+                    cancel.disabled = false;
+                    return;
+                }
+                log("Uninstall started. Discord will close while the installed state is restored.", "warning");
+                confirm.textContent = "Starting...";
+            } catch (error) {
+                log(`Uninstall failed to start: ${error instanceof Error ? error.message : String(error)}`, "error");
+                confirm.disabled = false;
+                cancel.disabled = false;
+            }
+        })();
+    };
+
     refreshStatusButton.onclick = () => void runControl("Status", controls.status);
     stopEngineButton.onclick = () => void runControl("Stop", controls.stop);
+    uninstallButton.onclick = () => void showUninstallConfirm();
     discordProfileButton.onclick = () => {
         void (async () => {
             try {
@@ -450,9 +813,18 @@ export function mountFloatingDashboard(controls: FloatingDashboardControls): () 
         event.stopPropagation();
         options.classList.toggle("open");
     };
+    helpButton.onclick = event => {
+        event.stopPropagation();
+        const open = helpWrap.classList.toggle("open");
+        helpButton.classList.toggle("active", open);
+    };
 
     const onDocumentClick = (event: MouseEvent) => {
         if (!options.contains(event.target as Node)) options.classList.remove("open");
+        if (!helpWrap.contains(event.target as Node)) {
+            helpWrap.classList.remove("open");
+            helpButton.classList.remove("active");
+        }
     };
     document.addEventListener("click", onDocumentClick);
 
@@ -463,6 +835,27 @@ export function mountFloatingDashboard(controls: FloatingDashboardControls): () 
     hideButton.onclick = toggle;
     const onKeyDown = (event: KeyboardEvent) => {
         if (event.repeat) return;
+
+        const exactControlHotkey = event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey;
+        if (exactControlHotkey && event.code === "KeyS") {
+            event.preventDefault();
+            event.stopPropagation();
+            const running = isEngineRunning();
+            void runControl(running ? "STOP" : "START", running ? controls.stop : controls.start);
+            return;
+        }
+        if (exactControlHotkey && event.code === "KeyP") {
+            event.preventDefault();
+            event.stopPropagation();
+            const entries = readDashboard();
+            const hasActive = entries.some(e => e.status === "RUNNING" || e.status === "QUEUE");
+            const hasPaused = entries.some(e => e.status === "PAUSED");
+            const resume = isEngineRunning() && hasPaused && !hasActive;
+            if (isEngineRunning() && (hasActive || hasPaused)) {
+                void runControl(resume ? "RESUME" : "PAUSE", resume ? controls.resumeAll : controls.pauseAll);
+            }
+            return;
+        }
 
         const isShiftPeriod =
             event.key === ">" ||
@@ -532,6 +925,10 @@ export function mountFloatingDashboard(controls: FloatingDashboardControls): () 
         disposed = true;
         unsubscribeDashboard();
         unsubscribeEvents();
+        questNavObserver.disconnect();
+        if (questStatusFrame) cancelAnimationFrame(questStatusFrame);
+        document.getElementById(NATIVE_QUEST_STATUS_ID)?.remove();
+        SettingsStore.removePrefixChangeListener("plugins.Audisk", onSettingsChanged);
         dragCleanup?.();
         document.removeEventListener("click", onDocumentClick);
         window.removeEventListener("keydown", onKeyDown, true);

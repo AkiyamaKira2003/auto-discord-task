@@ -1,6 +1,6 @@
 # Audisk architecture
 
-Version: v4.11.5
+Version: v4.11.6
 
 This document describes the current Audisk runtime rather than the historical project layout.
 
@@ -80,7 +80,7 @@ The achievement path is gated behind explicit settings consent.
 
 `dashboardUi.ts` is a view/control layer over the engine. It subscribes to dashboard entries and structured companion events.
 
-The panel shows Audisk branding, version, health, controls, Quest cards, logs and the Kiraa profile button. The profile button resolves Discord user ID `581419585249607710` and calls Discord's native `openUserProfileModal` with the currently selected guild/channel context.
+The panel shows Audisk branding, version, health, controls, Quest cards, logs, synchronized Vencord settings, and the Kiraa profile button. The profile button resolves Discord user ID `581419585249607710` and calls Discord's native `openUserProfileModal` with the currently selected guild/channel context. A MutationObserver maintains the lightweight Audisk status marker beside Discord's native Quests navigation entry after React rerenders.
 
 The dashboard never creates a second engine.
 
@@ -92,16 +92,16 @@ The standalone script and plugin intentionally share product naming and behavior
 
 ## 13. Installer architecture
 
-`RUN.cmd` calls `run.ps1`, which launches the devbuild installer for Discord Canary using the current repository as the local plugin source.
+`INSTALL.cmd` calls root `install.ps1`, which delegates to the canonical devbuild `install.ps1`. That menu maps 1/2/3 to Discord Stable/Canary/PTB and launches the same full installer backend using the current repository as the local plugin source.
 
-The devbuild installer uses `%LOCALAPPDATA%\AudiskVencord`, builds before injecting Discord, verifies required Vencord runtime files, checks that `renderer.js` contains the Audisk marker and writes a SHA-256 health stamp.
+The devbuild installer uses `%LOCALAPPDATA%\AudiskVencord`, builds before injecting Discord, verifies required Vencord runtime files, checks that `renderer.js` contains the Audisk marker and writes a SHA-256 health stamp. On the first install it also records whether Discord was already patched by Vencord and, when possible, preserves that pre-install app.asar stub for the in-dashboard uninstall flow.
 
 Transactional build helpers in `tools/audisk-devbuild-installer/installer-common.ps1` preserve a previously verified runtime so a failed build does not replace a known-good dist.
 
 ## 14. Clean-install boundary
 
-The public installer contains only Audisk installation and update behavior. `RUN.cmd` is intended for a new machine or a clean Audisk setup and does not perform migration from earlier product names.
+The public installer contains only Audisk installation and update behavior. `INSTALL.cmd` is intended for a new machine or a clean Audisk setup and does not perform migration from earlier product names.
 
 ## 15. Third-party boundary
 
-Audistask runs inside Vencord but does not own Vencord or its bundled libraries. Third-party copyright/license notices remain untouched. See root `LICENSE`, `NOTICE.md`, and `tools/audisk-vencord-bundle/LICENSE-VENCORD.txt`.
+Audisk runs inside Vencord but does not own Vencord or its bundled libraries. Third-party copyright/license notices remain untouched. See root `LICENSE`, `NOTICE.md`, and `tools/audisk-vencord-bundle/LICENSE-VENCORD.txt`.

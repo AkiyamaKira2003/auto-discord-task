@@ -28,6 +28,13 @@ $PluginSrc = if (-not [string]::IsNullOrWhiteSpace($LocalPluginSource)) {
 }
 $RepoUrl    = 'https://github.com/Vendicated/Vencord'
 $PluginRepoUrl = 'https://github.com/AkiyamaKira2003/auto-discord-task.git'
+$InstallStatePath = Join-Path $InstallDir '.audisk-install-state.json'
+$RuntimeUninstallerSource = Join-Path $PSScriptRoot 'uninstall-runtime.ps1'
+$RuntimeUninstallerDest = Join-Path $InstallDir '.audisk-uninstall.ps1'
+$RuntimeUninstallerLauncherSource = Join-Path $PSScriptRoot 'uninstall-runtime.cmd'
+$RuntimeUninstallerLauncherDest = Join-Path $InstallDir '.audisk-uninstall.cmd'
+$pendingInstallState = $null
+$pendingPreviousAsar = $null
 
 function Copy-LocalAudiskSource {
     param(
@@ -118,6 +125,38 @@ if (-not $SkipInject) {
     $runningPreflight = @(Get-RunningDiscordFlavors)
     $targetBranch = Choose-DiscordBranch -Installed $installedPreflight -Running $runningPreflight -PreferredBranch $DiscordBranch
     Good "  Target selected: Discord $targetBranch"
+
+    # Capture the state that existed before the first Audisk install. Re-runs must never
+    # overwrite it, otherwise Uninstall could no longer restore the user's original Vencord.
+    if (-not (Test-Path -LiteralPath $InstallStatePath -PathType Leaf)) {
+        $discordRoot = Get-DiscordRoot -Branch $targetBranch
+        $resources = Select-VencordDiscordResourcesPath -DiscordRoot $discordRoot
+        $asar = if ($resources) { Join-Path $resources 'app.asar' } else { $null }
+        $ownPatcher = [IO.Path]::GetFullPath((Join-Path $InstallDir 'dist\patcher.js'))
+        $hadVencordBefore = $false
+        if ($asar -and (Test-Path -LiteralPath $asar -PathType Leaf)) {
+            try {
+                $asarText = [IO.File]::ReadAllText($asar)
+                $looksPatched = $asarText.IndexOf('patcher.js', [StringComparison]::OrdinalIgnoreCase) -ge 0
+                $pointsToAudisk = $asarText.IndexOf($ownPatcher, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+                    $asarText.IndexOf($ownPatcher.Replace('\', '\\'), [StringComparison]::OrdinalIgnoreCase) -ge 0
+                if ($looksPatched -and -not $pointsToAudisk) {
+                    $hadVencordBefore = $true
+                    $pendingPreviousAsar = Join-Path $env:TEMP ("audisk-preinstall-" + [guid]::NewGuid().ToString('N') + '.asar')
+                    Copy-Item -LiteralPath $asar -Destination $pendingPreviousAsar -Force
+                }
+            } catch {
+                $hadVencordBefore = $false
+            }
+        }
+        $pendingInstallState = [ordered]@{
+            stateVersion = 1
+            branch = $targetBranch
+            hadVencordBefore = $hadVencordBefore
+            previousAppAsarSnapshot = if ($hadVencordBefore) { '.audisk-preinstall-app.asar' } else { $null }
+            installedAt = (Get-Date).ToUniversalTime().ToString('o')
+        }
+    }
 }
 
 Info '[1/6] Checking Node.js and Git...'
@@ -153,6 +192,28 @@ if (Test-Path (Join-Path $InstallDir '.git')) {
 } else {
     if (Test-Path $InstallDir) { Fail "$InstallDir exists but isn't a git clone. Move or delete it, then re-run." }
     Step 'git clone' { git clone --depth 1 --quiet $RepoUrl $InstallDir }
+}
+
+if (-not (Test-Path -LiteralPath $RuntimeUninstallerSource -PathType Leaf)) {
+    Fail 'uninstall-runtime.ps1 is missing from the installer package.'
+}
+if (-not (Test-Path -LiteralPath $RuntimeUninstallerLauncherSource -PathType Leaf)) {
+    Fail 'uninstall-runtime.cmd is missing from the installer package.'
+}
+Copy-Item -LiteralPath $RuntimeUninstallerSource -Destination $RuntimeUninstallerDest -Force
+Copy-Item -LiteralPath $RuntimeUninstallerLauncherSource -Destination $RuntimeUninstallerLauncherDest -Force
+
+if ($pendingInstallState -and -not (Test-Path -LiteralPath $InstallStatePath -PathType Leaf)) {
+    if ($pendingPreviousAsar) {
+        Copy-Item -LiteralPath $pendingPreviousAsar -Destination (Join-Path $InstallDir '.audisk-preinstall-app.asar') -Force
+        Remove-Item -LiteralPath $pendingPreviousAsar -Force -ErrorAction SilentlyContinue
+        $pendingPreviousAsar = $null
+    }
+    [IO.File]::WriteAllText(
+        $InstallStatePath,
+        ($pendingInstallState | ConvertTo-Json -Depth 4),
+        (New-Object System.Text.UTF8Encoding($false))
+    )
 }
 
 Info '[3/6] Adding the Audisk plugin...'

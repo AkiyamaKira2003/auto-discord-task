@@ -42,7 +42,7 @@ For plugin work:
 5. Verify `dist/renderer.js` contains `Audisk`.
 6. Test the dashboard, commands and teardown in Discord Canary.
 
-For installer work, run the scripts in `tools/tests/` and verify rollback behavior before using `RUN.cmd` against a real client.
+For installer work, run the scripts in `tools/tests/` and verify rollback behavior before using `INSTALL.cmd` against a real client.
 
 ## Safety-sensitive behavior
 
