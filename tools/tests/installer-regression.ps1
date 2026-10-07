@@ -390,6 +390,9 @@ Assert-True ($rootInstallText -match 'tools\\audisk-devbuild-installer\\install\
 Assert-True ($menuInstallText -match "Number = '1'.*Branch = 'stable'") 'Installer option 1 must map to Discord Stable.'
 Assert-True ($menuInstallText -match "Number = '2'.*Branch = 'canary'") 'Installer option 2 must map to Discord Canary.'
 Assert-True ($menuInstallText -match "Number = '3'.*Branch = 'ptb'") 'Installer option 3 must map to Discord PTB.'
+Assert-True ($menuInstallText -match 'Multi-select is supported') 'Installer menu must tell users that multiple clients can be selected.'
+Assert-True ($menuInstallText -match 'Examples: 1 3') 'Installer menu must show a concrete multi-select example.'
+Assert-True ($menuInstallText -match "-split '\[,;\\s\]\+'") 'Installer must parse spaces, commas and semicolons as multi-select separators.'
 $retiredBrandPattern = [regex]::Escape(('Audi' + 'stask')) + '|' + [regex]::Escape(('Ori' + 'on'))
 Assert-False ($rootInstallCmdText -match $retiredBrandPattern) 'Public root INSTALL.cmd must contain no retired-product migration logic.'
 Assert-False ($rootInstallText -match $retiredBrandPattern) 'Public root install.ps1 must contain no retired-product migration logic.'
@@ -412,6 +415,12 @@ try {
         $output = @(& $RootInstall -DryRun -DiscordBranch $case.Branch)
         Assert-True ($output -contains $case.Expected) "Canonical installer failed selector mapping for $($case.Branch)."
     }
+
+    $multiOutput = @(& $RootInstall -DryRun -DiscordBranch @('stable', 'ptb'))
+    Assert-True ($multiOutput -contains 'BRANCH=stable') 'Multi-select must include Stable when Stable is selected.'
+    Assert-True ($multiOutput -contains 'BRANCH=ptb') 'Multi-select must include PTB when PTB is selected.'
+    Assert-False ($multiOutput -contains 'BRANCH=canary') 'Multi-select must not install an unselected branch.'
+    Assert-Equal @($multiOutput | Where-Object { $_ -like 'BRANCH=*' }).Count 2 'Multi-select must emit each selected branch exactly once.'
 } finally {
     $env:LOCALAPPDATA = $oldMenuLocalAppData
     Remove-Item $tempMenu -Recurse -Force -ErrorAction SilentlyContinue

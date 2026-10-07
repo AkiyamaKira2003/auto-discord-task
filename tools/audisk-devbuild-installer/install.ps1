@@ -2,7 +2,7 @@
     [switch]$SkipInject,
     [switch]$DryRun,
     [string]$LocalPluginSource,
-    [ValidateSet('stable', 'canary', 'ptb')][string]$DiscordBranch
+    [ValidateSet('stable', 'canary', 'ptb')][string[]]$DiscordBranch
 )
 
 $ErrorActionPreference = 'Stop'
@@ -21,6 +21,23 @@ function Test-FlavorInstalled($flavor) {
     Test-Path -LiteralPath (Join-Path $flavor.Root 'Update.exe') -PathType Leaf
 }
 
+function Resolve-FlavorSelection([string]$Answer) {
+    $tokens = @($Answer -split '[,;\s]+' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($tokens.Count -eq 0) { return @() }
+
+    $seen = @{}
+    $resolved = @()
+    foreach ($token in $tokens) {
+        $candidate = $flavors | Where-Object Number -eq $token | Select-Object -First 1
+        if (-not $candidate) { return @() }
+        if (-not $seen.ContainsKey($candidate.Number)) {
+            $seen[$candidate.Number] = $true
+            $resolved += $candidate
+        }
+    }
+    return @($resolved)
+}
+
 function Show-Menu {
     Clear-Host
     Write-Host ''
@@ -28,7 +45,7 @@ function Show-Menu {
     Write-Host '                 Audisk by Kiraa - Installer' -ForegroundColor Cyan
     Write-Host '==============================================================' -ForegroundColor DarkCyan
     Write-Host ''
-    Write-Host 'Choose the Discord client to install Audisk into:' -ForegroundColor White
+    Write-Host 'Choose the Discord client(s) to install Audisk into:' -ForegroundColor White
     Write-Host ''
     foreach ($flavor in $flavors) {
         $installed = Test-FlavorInstalled $flavor
@@ -37,50 +54,77 @@ function Show-Menu {
         Write-Host ("  {0}. {1,-18} [{2}]" -f $flavor.Number, $flavor.Label, $state) -ForegroundColor $color
     }
     Write-Host ''
+    Write-Host 'Multi-select is supported.' -ForegroundColor Cyan
+    Write-Host 'Examples: 1 3    1,3    1 2 3' -ForegroundColor DarkCyan
+    Write-Host ''
 }
 
-$selected = $null
-if ($DiscordBranch) {
-    $selected = $flavors | Where-Object Branch -eq $DiscordBranch | Select-Object -First 1
-    if (-not (Test-FlavorInstalled $selected)) {
-        throw "$($selected.Label) is not installed on this PC."
+$selected = @()
+if ($DiscordBranch -and $DiscordBranch.Count -gt 0) {
+    $seenBranches = @{}
+    foreach ($branch in $DiscordBranch) {
+        $candidate = $flavors | Where-Object Branch -eq $branch | Select-Object -First 1
+        if (-not $candidate) { throw "Unsupported Discord branch: $branch" }
+        if (-not (Test-FlavorInstalled $candidate)) {
+            throw "$($candidate.Label) is not installed on this PC."
+        }
+        if (-not $seenBranches.ContainsKey($candidate.Branch)) {
+            $seenBranches[$candidate.Branch] = $true
+            $selected += $candidate
+        }
     }
 } else {
-    while (-not $selected) {
+    while ($selected.Count -eq 0) {
         Show-Menu
-        $answer = (Read-Host 'Select 1, 2 or 3').Trim()
-        $candidate = $flavors | Where-Object Number -eq $answer | Select-Object -First 1
-        if (-not $candidate) {
-            Write-Host 'Please choose 1, 2 or 3.' -ForegroundColor Yellow
-            Start-Sleep -Milliseconds 700
+        $answer = (Read-Host 'Select one or more clients').Trim()
+        $candidates = @(Resolve-FlavorSelection $answer)
+        if ($candidates.Count -eq 0) {
+            Write-Host 'Choose 1, 2, 3, or combine them, for example: 1 3' -ForegroundColor Yellow
+            Start-Sleep -Milliseconds 900
             continue
         }
-        if (-not (Test-FlavorInstalled $candidate)) {
-            Write-Host "$($candidate.Label) is not installed. Choose another client." -ForegroundColor Yellow
-            Start-Sleep -Milliseconds 1000
+
+        $missing = @($candidates | Where-Object { -not (Test-FlavorInstalled $_) })
+        if ($missing.Count -gt 0) {
+            Write-Host ("Not installed: {0}. Choose only installed clients." -f (($missing | ForEach-Object Label) -join ', ')) -ForegroundColor Yellow
+            Start-Sleep -Milliseconds 1200
             continue
         }
-        $selected = $candidate
+        $selected = $candidates
     }
 }
 
 Write-Host ''
-Write-Host ("Installing Audisk into {0}..." -f $selected.Label) -ForegroundColor Cyan
+Write-Host ("Selected: {0}" -f (($selected | ForEach-Object Label) -join ', ')) -ForegroundColor Cyan
 Write-Host ''
 
 if ($DryRun) {
-    Write-Output ("BRANCH={0}" -f $selected.Branch)
-    Write-Output ("CLIENT={0}" -f $selected.Label)
+    foreach ($target in $selected) {
+        Write-Output ("BRANCH={0}" -f $target.Branch)
+        Write-Output ("CLIENT={0}" -f $target.Label)
+    }
     exit 0
 }
 
-$args = @{
-    DiscordBranch = $selected.Branch
-}
-if ($SkipInject) { $args.SkipInject = $true }
-if (-not [string]::IsNullOrWhiteSpace($LocalPluginSource)) {
-    $args.LocalPluginSource = $LocalPluginSource
+for ($i = 0; $i -lt $selected.Count; $i++) {
+    $target = $selected[$i]
+    Write-Host ("[{0}/{1}] Installing Audisk into {2}..." -f ($i + 1), $selected.Count, $target.Label) -ForegroundColor Cyan
+    Write-Host ''
+
+    $arguments = @{
+        DiscordBranch = $target.Branch
+    }
+    if ($SkipInject) { $arguments.SkipInject = $true }
+    if (-not [string]::IsNullOrWhiteSpace($LocalPluginSource)) {
+        $arguments.LocalPluginSource = $LocalPluginSource
+    }
+
+    & $Backend @arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Audisk installation failed for $($target.Label) with exit code $LASTEXITCODE."
+    }
+    Write-Host ''
 }
 
-& $Backend @args
-exit $LASTEXITCODE
+Write-Host ("Audisk installation completed for: {0}" -f (($selected | ForEach-Object Label) -join ', ')) -ForegroundColor Green
+exit 0

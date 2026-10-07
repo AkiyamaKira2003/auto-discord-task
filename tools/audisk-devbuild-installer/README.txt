@@ -2,7 +2,7 @@ AUDISK BY KIRAA - VEN CORD AUTO-UPDATE INSTALLER
 ==================================================
 
 Owner / maintainer: Kiraa (AkiyamaKira2003)
-Version: v4.11.6
+Version: v4.11.7
 Project: https://github.com/AkiyamaKira2003/auto-discord-task
 Plugin name: Audisk
 Plugin folder: src\userplugins\audisk
@@ -10,7 +10,7 @@ Default build folder: %LOCALAPPDATA%\AudiskVencord
 
 QUICK INSTALL
 -------------
-From the repository root, INSTALL.cmd is the preferred clean-install path. It asks which Discord client to target: 1 Stable, 2 Canary, or 3 PTB.
+From the repository root, INSTALL.cmd is the preferred clean-install path. It asks which Discord client(s) to target: 1 Stable, 2 Canary, or 3 PTB. Multi-select is supported with inputs such as 1 3, 1,3, or 1 2 3.
 
 INSTALL installs Audisk from the current repository and contains no migration behavior for earlier product names.
 

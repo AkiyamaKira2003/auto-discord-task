@@ -1,7 +1,7 @@
-﻿param(
+param(
     [switch]$SkipInject,
     [switch]$DryRun,
-    [ValidateSet('stable', 'canary', 'ptb')][string]$DiscordBranch
+    [ValidateSet('stable', 'canary', 'ptb')][string[]]$DiscordBranch
 )
 
 $ErrorActionPreference = 'Stop'
