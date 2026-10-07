@@ -1,228 +1,456 @@
 # Audisk
 
+[![Version](https://img.shields.io/badge/v4.11.4-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://github.com/AkiyamaKira2003/auto-discord-task/releases/latest)
+[![Stars](https://img.shields.io/github/stars/AkiyamaKira2003/auto-discord-task?style=for-the-badge&color=faa61a)](https://github.com/AkiyamaKira2003/auto-discord-task/stargazers)
+[![License](https://img.shields.io/badge/MIT-green?style=for-the-badge)](LICENSE)
+
 Version: v4.11.4
 
-**Audisk by Kiraa** is a Discord Quest automation project for Discord desktop and Vencord. The current build focuses on a native Vencord userplugin, a compact floating dashboard, a one-click Canary installer, and a standalone console script kept in the same repository.
+Completes Discord Quests without playing them. It reads the quests you're eligible for, tells Discord you're doing the thing the quest asks for, and waits for Discord to credit the progress.
 
-- Project owner / maintainer: **Kiraa (AkiyamaKira2003)**
-- GitHub: https://github.com/AkiyamaKira2003/auto-discord-task
-- Discord profile shown in the UI: **akiyamakira2003**
-- Plugin command: **`/audisk`**
-- Default client for `RUN.cmd`: **Discord Canary**
+It handles all five quest types: play a game, stream a game, watch a video, join an activity, and earn an achievement inside an activity. That last one is the reason this project exists, and none of the other tools listed at the bottom of this page do it.
+
+Two ways to run it. A single userscript you paste into DevTools, or a Vencord plugin that starts with Discord. Same engine, kept in sync, in this repo.
 
 > [!CAUTION]
-> Discord can enforce against automated Quest completion. Audisk changes Quest-related client behavior and may create account-level risk. Do not treat automation as undetectable or guaranteed safe. Achievement automation is especially sensitive because it can involve real OAuth authorization for the Quest application. Use the project only on accounts where you accept that risk.
+> **Discord has been enforcing against quest automation since April 2026.** People have had system messages land on their account after running automation, any automation, not only this. That is the trade you are making.
+>
+> The one case reported here with details attached, #59, was a **14 day quest restriction** after four to five weeks of consistent use: a system notification citing quest automation, quests locked, and nothing else on the account visibly touched. Read that last part narrowly: the datamine account below reports an Account Standing violation attached to these, and a strike on the account record is not something the person holding the account would necessarily see. Audisk reads that state (`questAccessSuspendedUntil`) and stops with the date rather than failing quietly. One report is not a pattern, and nothing stops Discord from acting on the whole account instead. Assume it can.
+>
+> A second and much larger data point since then, from outside this repo: r/DiscordQuests ran a [suspension megathread](https://www.reddit.com/r/DiscordQuests/comments/1vzo77m/megathread_discord_quest_access_suspensions_false/) in late August 2026 for a wave of **Quest Access suspensions** carrying the violation string *"Inauthentic Quest Completion"*. **The penalty is not confined to quests.** @WumpusCentral, which datamines the client, reported on 26 August that the suspensions land **along with an Account Standing violation**, which is the account-wide record, and a named violation is exactly what appears there. Nobody outside Discord has a settled number for how long the lock lasts: the leaked client code read *up to 10 days*, @WumpusCentral and the one detailed report here both say *14*, and the megathread says *15*. What people reported there, none of it measured by anyone outside Discord: scripts and completer tools were caught, renamed executables and custom paths were caught, several people who played normally were caught and later had the flag rolled back, and one moderator's reading was that finishing a game at exactly the quest duration and closing it immediately is part of what gets flagged. Set against that, other people in the same thread have automated quests for a year with nothing landing on them. Enforcement is real, it is automated, and it does not reach everyone at the same rate.
+>
+> A suspension locks the quest surface on desktop for every task type, video included. It is enforced in the UI only: nothing on the request path consults it. Audisk stops anyway, because an account Discord has already flagged and told to stop, still sending desktop heartbeats, is the loudest thing this tool could possibly do.
+>
+> **On fingerprints.** Discord Previews reported in August 2026 that Discord has been building "executable fingerprints" among new systems for detecting who automates quests. The heartbeat has carried an `executable_fingerprint` field for longer than that: a 192 byte native attestation that exists only because a real binary is running. Audisk sends none, because a spoofed game has no process to attest, and Discord accepts the heartbeat without it. Absence is a state real clients also produce, so it is not by itself proof of anything, while an invented value would fail whatever verification exists and be far louder than sending nothing. It is the one field in the heartbeat that cannot be produced without the real game running, and no amount of client side work changes that.
+>
+> **A telemetry blocker does not hide this, and it is worth saying because the belief is out there.** People on r/DiscordQuests have proposed that running under a client mod with analytics blocking (Vencord's NoTrack and similar) stops Discord seeing how quests are completed. It does not, and someone in that thread reported being flagged nine days into doing exactly that. Blocking analytics stops the product telemetry, the `track` events and the recaps. Quest progress does not travel on that channel: it travels on the quest heartbeat, the functional request that has to arrive for progress to be credited, and that is the request carrying the executable fields above. Blocking telemetry silences the channel that was not accusing you and keeps the one that is.
+>
+> **The achievement bypass is the riskiest part of this tool, by a distance.** To complete an `ACHIEVEMENT_IN_ACTIVITY` quest it runs a real OAuth2 authorization against the quest's application on your account (scopes `identify applications.commands applications.entitlements`), mints a proxy ticket, posts forged progress to the activity backend on `discordsays.com`, then revokes the grant it created. That is forging progress with your logged-in account, which is precisely the behaviour being enforced against. It asks before every authorization: the userscript shows a confirm dialog, the plugin keeps it behind a setting that is off until you turn it on. What goes to `discordsays.com` is the app's OAuth code, the proxy ticket, and a progress number. Never your token, email, or password. If you would mind losing the account, don't run this on it.
 
-## What Audisk does
+## Which download you want
 
-Audisk reads Discord's own Quest data and schedules work through the logged-in Discord client. The engine tracks Quest state, progress, retries, pause/resume state, claim state, account changes, and cleanup of temporary spoofed state.
+The [latest release](https://github.com/AkiyamaKira2003/auto-discord-task/releases/latest) ships four files and most people need one or two of them.
 
-Supported task families in the current engine include:
+| File | What it is | Who it's for |
+|---|---|---|
+| `index.js` | The userscript. Paste into DevTools, no install. | Anyone comfortable opening the console. Needs Vencord on Discord Stable, see below. |
+| `audisk-relay-vX.zip` | A small localhost HTTP listener on `127.0.0.1:43210`. PowerShell and Python versions. | Only if you want achievement quests **and** you're using the userscript without the plugin. Explained under [Achievement quests](#achievement-quests). |
+| `audisk-vencord-bundle-vX.zip` | Copies a prebuilt Vencord over an existing Vencord install. `INSTALL.cmd`, no build tools. | Someone non-technical who already has Vencord and wants this working in one double-click. Freezes their Vencord version, see the note below. |
+| `audisk-devbuild-installer-vX.zip` | Builds Vencord from source with the plugin in it, as a real git clone. | Same person, but they want Vencord to keep auto-updating. Takes 5 to 15 minutes and downloads roughly 300 MB. Pulls Node 22 and Git via winget if missing. |
 
-| Quest family | Audisk behavior |
-| --- | --- |
-| Video | Sends timed progress updates with retry/backoff handling. |
-| Desktop game | Uses Discord's running-game state so Discord drives the normal Quest heartbeat path. |
-| Activity | Uses Discord Quest heartbeat state for supported activity tasks. |
-| Achievement in activity | Can use the optional achievement bypass path when explicitly enabled. |
-| Stream | Pure stream-only Quests can still be limited by Discord's live-stream checks; Audisk prefers another supported task when the same Quest offers one. |
+The two installers exist because copying a prebuilt Vencord over someone's install has to disable Vencord's updater to be safe. `audisk-vencord-bundle` accepts that and freezes the version. `audisk-devbuild-installer` avoids it by building from a git checkout, so Vencord updates itself normally and the plugin is recompiled back in each time. Both are Windows only and both include a README.
 
-The engine also includes account-change cleanup, request throttling, per-task cancellation, scheduler metadata, heartbeat watchdogs, optional reward claiming, and structured events for the dashboard.
+If you already build Vencord yourself, skip the installers and see [`docs/VENCORD-PLUGIN.md`](docs/VENCORD-PLUGIN.md). With nin0's `UserpluginInstaller`, paste this repo's URL into its Install Plugin field and it clones, builds, and self-updates from there.
 
-## Fastest install: RUN
+## Quick start, Audisk plugin
 
-For this repository, use:
+For a clean Windows install with **Discord Canary** already installed, clone or download this repository and run:
 
 ```text
 RUN.cmd
 ```
 
-`RUN.cmd` is the public clean-install path for **Discord Canary**:
+`RUN.cmd` uses the repository itself as the plugin source. It prepares `%LOCALAPPDATA%\AudiskVencord`, installs the Audisk userplugin under `src\userplugins\audisk`, builds Vencord, verifies the generated renderer contains Audisk, patches Canary, and reopens the client.
 
-1. Builds/updates Vencord under `%LOCALAPPDATA%\AudiskVencord`.
-2. Copies the Audisk plugin from this repository into `src\userplugins\audisk`.
-3. Installs dependencies.
-4. Builds Vencord transactionally and verifies that the generated renderer contains Audisk.
-5. Patches Discord Canary with the verified build and reopens the client.
+After Discord starts, open **Settings -> Vencord -> Plugins**, search for **Audisk**, and enable it if needed. The plugin command is `/audisk`.
 
-It is designed to work on a new machine with no previous Audisk installation.
+The floating Audisk dashboard also includes the Discord-styled `akiyamakira2003` profile button. It opens Kiraa's native Discord profile modal in the client.
 
-### Other installer entry points
+## Quick start, userscript
 
-The maintained installer lives in:
+1. Open Discord. [Canary](https://canary.discord.com/download) has the console enabled already.
+2. `Ctrl + Shift + I`, Console tab.
+3. Paste [`index.js`](index.js) and press Enter.
 
-```text
-tools\audisk-devbuild-installer\
+A quest picker appears. Choose what to run and hit start. `Shift + .` hides and shows the dashboard, and STOP ends the run and undoes everything it patched.
+
+<details>
+<summary>Enabling the console on Discord Stable</summary>
+
+Close Discord, edit `%appdata%/discord/settings.json`:
+
+```json
+{ "DANGEROUS_ENABLE_DEVTOOLS_ONLY_ENABLE_IF_YOU_KNOW_WHAT_YOURE_DOING": true }
 ```
 
-Important files:
+Restart Discord.
+</details>
 
-- `INSTALL-autoupdate.cmd` - normal packaged install.
-- `UPDATE.cmd` - updates Vencord and the Audisk plugin.
-- `UNINSTALL.cmd` - removes the Audisk Vencord injection safely.
-- `install-autoupdate.ps1` - installer implementation.
-- `installer-common.ps1` - shared Discord/Vencord discovery, verification and rollback helpers.
+## What it does per quest type
 
-The installer points to the Kiraa repository:
+Audisk reads Discord's own webpack stores and drives Discord's own authenticated API client. It does not talk to any server of ours; there isn't one.
 
-```text
-https://github.com/AkiyamaKira2003/auto-discord-task.git
+| Quest task | How it's completed |
+|---|---|
+| `PLAY_ON_DESKTOP` | Injects a fake running process into `RunningGameStore`, built from the app's real metadata. Discord then sends the quest heartbeats itself and Audisk reads the progress off the replies. |
+| `STREAM_ON_DESKTOP` | **Does not work.** Same idea, plus a spoofed `getStreamerActiveStreamMetadata`, but Discord checks two other things first and the quest never gets a heartbeat. See below. |
+| `WATCH_VIDEO`, `WATCH_VIDEO_ON_MOBILE` | Posts video progress timestamps on a randomized interval, with the fractional values a real player would send. |
+| `PLAY_ACTIVITY` | Heartbeats against a voice channel stream key. |
+| `ACHIEVEMENT_IN_GAME` | **Not possible.** The achievement is earned in the retail game with the game linked to your account, and nothing in Discord can stand in for that. Named in the log and skipped. |
+| `ACHIEVEMENT_IN_ACTIVITY` | Tries the heartbeat first. Discord rejects those with a 403, because the activity backend validates them rather than the client, so it falls back to the OAuth path described below. |
+
+Where the quest's application id lives moved in July 2026, from `config.application.id` to per task at `config.taskConfigV2.tasks.<KEY>.applications[0].id`. Reading the old path fails silently rather than loudly, which is what broke every tool in this space at once. See #43.
+
+### Stream quests
+
+Before Discord reads the metadata Audisk fakes, it requires that you are really Going Live and that at least one other person is in the voice channel with you. Faking the third check alone leaves the first two failing, so no heartbeat is ever opened and the task aborts on its 90 second watchdog instead of completing. Measured on Stable 1.0.9255 and Canary 1.0.1148. The reasoning is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and the fix is tracked in #75.
+
+A quest that offers `STREAM_ON_DESKTOP` alongside `PLAY_ON_DESKTOP` or `WATCH_VIDEO` is now driven through the working task instead. It used to be driven as a stream, which meant a quest with a perfectly good path sat there timing out. Only a quest whose sole task is streaming is affected, and Audisk still reports the real reason rather than pretending.
+
+## Achievement quests
+
+These can't be faked client side, so completing one means authorizing the quest's app on your account and reporting progress to `discordsays.com` directly. Read the caution at the top before using it.
+
+Discord's renderer blocks requests to `discordsays.com` outright via CSP, so the request has to leave the renderer. Audisk tries, in order:
+
+1. The localhost relay on `127.0.0.1:43210`, if it's running. Discord's CSP allows loopback, so this works with no client mod at all.
+2. The Vencord plugin's native module, which runs the request in Electron's main process where CSP doesn't apply.
+3. A direct `fetch`, which only works on Discord in a browser.
+
+So on desktop you need either the relay or the plugin. There is no renderer-only way around this; that was tested to exhaustion.
+
+Quests for age-gated or delisted activities are skipped instead of retried. Discord answers `/proxy-tickets` with a 403 and code `50165` for those, and they can't be launched by hand either until you age-verify.
+
+## Settings
+
+The userscript asks at start, in the picker: which quests to run, filters by reward type (Orbs, Avatar Decoration, In-Game, Other), auto-enroll (on), auto-claim (off, because claiming often triggers a captcha), a completion sound (off), and randomized idle gaps between quests (off).
+
+Two things are edited in the `CONFIG` object at the top of `index.js` instead:
+
+```js
+const CONFIG = {
+    HIDE_ACTIVITY: false,   // turn Discord's "Display current activity as a status
+                            // message" off while quests run, and restore it after
+    MAX_LOG_ITEMS: 60,      // lines kept in the dashboard log
+};
 ```
 
-`RUN.cmd` uses the local source tree directly, so a freshly cloned or downloaded repository can install without a separate plugin checkout.
+The plugin has the same options as real settings, plus auto-start, per-type concurrency, and the achievement bypass toggle. They're documented in [`docs/VENCORD-PLUGIN.md`](docs/VENCORD-PLUGIN.md).
 
-## Audisk Vencord plugin
+## When things go wrong
 
-After installation, open Discord Canary and go to **Settings -> Vencord -> Plugins**. Search for **Audisk** and enable it if it is not already enabled.
+| Situation | What happens |
+|---|---|
+| 429 or 5xx | Exponential backoff and re-queue, up to 3 retries. Global and per-endpoint limits are tracked separately. |
+| 404 or 403 on enroll | Quest goes on a skip list and the run continues. |
+| A quest this client cannot drive | Named in the log with the task keys it offered, then skipped for the rest of the run rather than picked up again on the next cycle. |
+| 5 consecutive failures on one task | That task is abandoned, the rest keep going. |
+| A game quest gets nothing from Discord for 90s | Aborted with a reason, instead of sitting there until the timeout. A beat that Discord tried and failed is not silence: it resets the wait, and five in a row is what gives up. |
+| 25 minutes on one task | Hard stop, next quest. |
+| Auto-claim fails | A CLAIM button appears on the task card. |
+| A crash | The re-entry lock is released and every patch is reverted, so you can paste again without reloading. |
 
-The plugin metadata is owned by Kiraa and uses Discord user ID `581419585249607710` for the author profile.
+Stopping is meant to leave nothing behind. The patched store methods are restored, the fake process is removed, the OAuth grant from an achievement quest is revoked, and any Discord setting it changed is put back.
 
-### Slash command
+## Compatibility
 
-Use `/audisk` with one of these actions:
+Vanilla Discord **Stable** is only partly usable. A Stable build changed the webpack runtime so `webpackChunkdiscord_app.push` stopped exposing the live module cache after boot, which the userscript needs (#20). Three ways around it: run the userscript with Vencord installed and it uses Vencord's Webpack API instead, install the plugin, or use Canary or PTB where the native path still works.
 
-```text
-/audisk action:start
-/audisk action:stop
-/audisk action:status
-/audisk action:pause
-/audisk action:resume
-```
+In a browser or on mobile through a script-injection extension, video and activity quests work. Game and stream quests are filtered out, because they require the desktop client to exist at all.
 
-For pause/resume, the optional `quest` field accepts a Quest ID, exact name, or a unique part of its name.
+## Architecture
 
-## Floating dashboard
+`index.js` is one IIFE with no build step and no dependencies. The plugin is TypeScript at the repo root, because Vencord's `UserpluginInstaller` clones a repo straight into `src/userplugins` and only reads `index.tsx` and `native.ts` from its top level.
 
-When Audisk loads, it mounts a compact Discord-native floating dashboard. The dashboard is only a control/view layer; it does not start a second Quest engine.
+Stores are found by class name (`constructor.displayName`), the Dispatcher by its shape, and the API client by having a `.del` method, so nothing depends on minified paths that change every build. That handles Discord renaming things. It does not handle Discord *moving* things, which is what #43 was.
 
-The header shows:
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) is the full internal tour.
 
-- **Audisk**
-- **by Kiraa**
-- plugin version
-- health indicator
-- `START / STOP`
-- `PAUSE / RESUME`
-- hide button
-- options menu
+## Companion plugins
 
-Quest cards show state and progress. Logs are capped to a small rolling history to avoid an endlessly growing panel. `Shift + .` toggles the dashboard.
+Not alternatives to this, things that run alongside it.
 
-### Kiraa Discord profile button
+- [Herzchens/QuestUI](https://github.com/Herzchens/QuestUI), a Vencord plugin that adds the quest interface Audisk deliberately does not: Quest Home shortcuts, status indicators, and an optional dashboard that can drive Audisk. It does not complete, accept or claim anything itself, so it is useful with or without this plugin. Requested in #48.
 
-At the bottom of the Audisk dashboard is a Discord-styled button with the Discord icon and the username:
+  It reads the engine through Audisk's control surface rather than poking at its internals, which means Audisk stays the source of truth for what is running. Checked live before listing it, with both plugins in one build: every state change made from `/audisk` showed up in an already-open QuestUI dashboard, including a per-quest pause it had not issued itself, and the card list grew as the scheduler queued more quests without a reopen. Separate project, separate maintainer, and bugs in it belong in its tracker.
 
-```text
-akiyamakira2003
-```
+## Other tools
 
-The button uses Discord/Vencord's native `openUserProfileModal` flow. Pressing it resolves user ID `581419585249607710` and opens Kiraa's profile inside Discord Canary, like opening another user's profile normally. It does not launch an external browser.
+Worth knowing about, and worth knowing their state. All three were last updated before the July 2026 change described above, and none has shipped since.
 
-## Plugin settings
+- [markterence/auto-discord-task](https://github.com/markterence/auto-discord-task), a native Windows app that creates dummy executables so Discord's process detection sees a game, without touching the client. Structurally the most durable approach of the four, since it doesn't read Discord internals. Play quests only, Windows only. Last updated March 2026.
+- [nicola02nb/completeDiscordQuest](https://github.com/nicola02nb/completeDiscordQuest), a Vencord plugin descended from [aamiaa's original snippet](https://gist.github.com/aamiaa/204cd9d42013ded9faf646fae7f89fbb) that started this whole space. Covers everything except achievement quests. Last updated April 2026 and currently broken by the application id change, tracked in its own issue #23.
+- [nvckai/Discord-Web-Auto-Quest-Extension](https://github.com/nvckai/Discord-Web-Auto-Quest-Extension), a Chrome extension, easiest to install, video quests. Last updated April 2026.
 
-Audisk exposes Vencord settings for:
+Being the one that still works today is a function of being maintained, not of being cleverer. This approach reads Discord's internals, so any Discord update can break it, and one did. The dummy-executable approach doesn't have that failure mode.
 
-- auto start
-- auto enroll
-- watch for newly accepted Quests
-- achievement bypass consent
-- automatic reward claim attempts
-- hiding the temporary game activity presence
-- game-session tail duration
-- game concurrency
-- video concurrency
-- completion sound
-- verbose diagnostic logging
+## Contributing
 
-Risk-sensitive behavior is off by default where practical. In particular, the achievement bypass requires explicit opt-in.
+Bug reports, PRs and docs all welcome. [`CONTRIBUTING.md`](CONTRIBUTING.md) has the checklist and the code style, and there are issue templates for bugs and feature requests. If you're reporting a bug, the Discord build number from the very bottom of Discord's settings saves a round trip.
 
-## Standalone script
+---
 
-`index.js` is the standalone Audisk script. It uses the same product name, Audisk DOM IDs, Audisk logging prefixes and the same Kiraa-oriented project links.
+## Changelog
 
-The standalone path can use three transports for activity-backend requests, depending on environment:
 
-1. local Audisk relay
-2. Vencord Audisk native helper
-3. direct fetch where the environment permits it
+### v4.11.4
+- **A finished game quest no longer closes on the exact second it finishes.** The injected process used to disappear on the heartbeat that crossed the target, which made every spoofed session precisely as long as the quest requirement, on every quest, with no variance whatsoever. Real play overshoots, and by a different amount each time. It now holds the process for a randomised tail first, 40% to 100% of the new `PLAY_SESSION_TAIL_MIN` (userscript) / `playSessionTail` (plugin) setting, default 2 minutes, `0` for the old behaviour. **This costs no extra requests.** Discord ends its own quest heartbeat the moment it sees `completedAt` and sends the terminal beat itself, so what the tail extends is the "Playing ..." presence and nothing else; `hideActivity` still hides it. Stop releases the process immediately either way. Internally `finish()` split into `stopWatching()` and `releaseSpoof()`, because leaving the 90 second watchdog up through the tail would have failed a quest that had already succeeded. Verified on a live client: a 900 second quest completed, held its process 78 seconds, released it, and the cycle closed normally.
+- **The executable a spoofed game claims is now the one the game actually ships.** `fetchGameData` took the first `win32` entry from Discord's app registry and pasted it after `C:\Program Files\<Game>\`. Those entries are not always a bare file name. Dragonheir lists `dragonheir silent gods/dragonheir.exe`, which produced `c:/program files/dragonheir silent gods/dragonheir silent gods/dragonheir.exe` and put a path separator inside the string reported as the executable name, which no real process report can contain. Marvel Rivals lists an internal test build, and **Discord does not return that array in a stable order**: the same app came back as `[test, shipping, marvel, launcher]` and then as `[test, launcher, marvel, shipping]` minutes apart, so the binary being claimed changed from run to run. `pickExecutable` ranks the entries instead, demoting test builds, launchers and entries that need an install directory guessed, and breaks ties by name so the answer is stable. Where Discord already spells the game folder into the entry, it is no longer added a second time. Marvel Rivals now reports `marvel-win64-shipping.exe` under `c:/program files/marvel rivals/win64/`, checked on a live client, where it reported `win64/marvel-win64-test.exe` before. 14 new assertions cover it and the old rule fails 8 of them.
+- **Docs.** The README's caution now carries the two things worth knowing before running any of this, both from outside this repo. r/DiscordQuests' late-August [suspension megathread](https://www.reddit.com/r/DiscordQuests/comments/1vzo77m/megathread_discord_quest_access_suspensions_false/) covers a wave of 15 day Quest Access suspensions under the violation string *"Inauthentic Quest Completion"*, including people who played normally and later had the flag rolled back, set against others in the same thread who have automated for a year untouched. And the `executable_fingerprint` field is stated plainly rather than left as a footnote: Discord Previews reported in August that Discord has been building executable fingerprints for this, it is a native attestation that exists only because a real binary is running, Audisk sends none because there is no process to attest, and an invented one would be far louder than none. `docs/ARCHITECTURE.md` picks up both changes above, and its video cadence line was wrong: both engines send at `rnd(7000,9500)`ms, which is Discord's own player loop, not the `rnd(3500,4750)`ms it claimed.
 
-The native helper name is now `VencordNative.pluginHelpers.Audisk`.
+### v4.11.3
+- **A web page you had open could drive the Audisk Relay. Update the relay along with the userscript.** The relay reflected `Access-Control-Allow-Origin` back to `discord.com` only, which stops another site *reading* its replies, and that was mistaken for stopping other sites *using* it. It doesn't: a cross-origin `POST` skips the CORS preflight entirely as long as it stays a "simple request", which a page arranges by sending the JSON as `text/plain`. The relay never saw a preflight to refuse, forwarded the request to whichever `<id>.discordsays.com` the page named, and only the reply was withheld. `/proxy` now requires an `X-Audisk-Relay: 1` header, which a simple request may not carry, so every browser caller is forced through the preflight that already refused non-Discord origins. Verified both ways in `tools/tests/relay-regression.py`, which is in CI now. This is a CORS forcing function and not authentication: a local program can set the header too, and the upstream host and path allowlist is still what limits the damage.
+- **An out-of-date relay says so instead of failing the quest.** A relay older than this answers the new header with 403, which the userscript would have reported as a failed bypass. It now names the stale relay in the log and falls through to the other transports.
+- Nothing about the relay's exposure changed otherwise: it still binds `127.0.0.1` only, still forwards only to `^[0-9]+\.discordsays\.com$` on the two `acf` paths, still drops every header outside the allowlist, still refuses a rebound `Host`, and still logs no credentials.
 
-## Audisk relay
+- **Reproduced before it was fixed, against the live backend.** A cross-origin `POST` with `Content-Type: text/plain` and `Origin: https://evil.example`, carrying no custom header, came back `{"ok": true, "status": 200}` with a real response body: the relay had already made the request. The same attack against the fixed relay answers `missing X-Audisk-Relay header`, and removing the guard fails exactly 2 of the suite's 8 checks. Worth stating what the hole did and did not reach: the relay holds no credentials, attaches no cookies, and the host and path allowlist still applied, so the outcome was a blind request to an app host the attacker registered, confirming you run Audisk rather than leaking anything from the account.
+- **The Orb balance no longer answers from a cache it cannot vouch for.** #90 from [@mods-hd](https://github.com/mods-hd), closing the note left on #89. `VirtualCurrencyStore` clears its balance on `LOGIN_SUCCESS` and on nothing else in that family, so between a logout and the next login it still holds the previous account's number, and the fast path returned it before the guard on the network read was reached. Proved by seeding the store the way Discord's gateway does and then removing the identity: without the fix the status answered `Balance: 777777 Orbs on the account.`, with it `Balance: unavailable, no account is signed in.` Not reachable in ordinary use, since a slash command cannot be run from the login screen, and worth one line in front of it regardless.
+- **A quest prints the one Orb figure the account will actually receive.** #91, also from mods-hd, finishing the follow-up from #88. `(840 with Nitro)` beside `700 Orbs` was Discord's own **UPSELL** state carried into the line: its quest card shows the premium figure when `canUseMoreQuestOrbs(user)` is true, keeps the base figure for accounts it classes as ineligible, and reserves the pairing for accounts it can sell a subscription to. Audisk has no business carrying that, so the line prints one number and the totals are summed on the same side. The check calls Discord's own function rather than reading `premiumType`, which covers Xbox Game Pass too, and resolves the module by two of its named exports: only one factory in the bundle carries both, while two carry `canUseMoreQuestOrbs` alone, so keying on one name would have been ambiguous.
+- **The unit suites run without a Vencord checkout.** Also #92. The 115 assertions under `tests/` only touch Vencord-free modules, but the only job running them cloned Vencord and installed its dependencies first, so a broken watchdog took minutes of CI to surface and could not be reproduced locally without a full dev build. `traffic.ts` was the one thing in the way, importing `@utils/Logger` purely to default a constructor parameter every caller already passes.
 
-The optional local relay is in:
+### v4.11.2
+- **`/audisk status` and the picker now say what the account already holds, not just what the run is worth.** #89 from [@mods-hd](https://github.com/mods-hd), the read-only half of #87. `VirtualCurrencyStore` carries the figure Discord's own Orb pill shows, so that is read first and costs no request; before Discord has fetched it the store is empty and one `GET /users/@me/virtual-currency/balance` fills it in. The read happens only when you ask for status or open the picker, and nothing polls. Nothing here spends or redeems, which was the whole point of the answer on #87.
+- **The balance shows when Audisk is idle, which is when you are most likely to be asking.** Caught by [@Herzchens](https://github.com/Herzchens) reviewing: `statusSummary()` returned early both when nothing was running and when the dashboard was empty, so the new line was built after the two paths that skipped it. It is built once now and appended to those responses too.
+- **The balance read fails closed rather than answering for the wrong account.** Also from that review. The user id is compared on both sides of the network request, and a change during it reports `Balance: unavailable, the account changed during the read.` rather than the other account's number; a read with nobody signed in stops before the request goes out. Worth being precise about what is and is not guaranteed underneath that: the store fast-path returns its cached value without an ownership check, and the store resets that value on `LOGIN_SUCCESS` and on nothing else in that family, so its guarantee is "owned by whoever was signed in at the last login" rather than "owned by whoever is signed in now". No reachable case came out of that, since a slash command cannot be run from the login screen and an account switch passes through `LOGIN_SUCCESS`, but it is the reasoning the fast-path rests on and it is narrower than it first appears.
 
-```text
-tools\audisk-relay\
-```
+### v4.11.1
+- **Each quest now says what it pays.** Asked for by [@4kema](https://github.com/4kema) in #86 and implemented by [@mods-hd](https://github.com/mods-hd) in #88 the same day. Both surfaces already knew a quest paid Orbs, the picker colours a card by it and filters on it, but neither said how many, so choosing which quests were worth a slot meant counting them on Discord's own Quests page. The number was in the payload the client already holds, at `config.rewardsConfig.rewards[].orbQuantity`, so nothing extra is fetched. The picker shows the payout per card with a total under the list that follows the reward filters and the checkboxes, and `/audisk status` appends it per task plus one line for the run, split into what the tasks are worth and how much of that is still unclaimed, since Orbs only land at claim time. The payout is summed across every reward entry rather than read off the first one, and the Nitro figure is Discord's own `premiumOrbQuantity` rather than a 1.2x computed here, printed only when the two differ. Verified on a live account: 55 of 66 quests carry the field, and a run reported `2700 Orbs (3240 with Nitro)` across eight tasks with the two that pay nothing printing nothing rather than a zero.
+- **The caution at the top of this page now names a real case.** #59 carries the first enforcement report here with details attached: a 14 day quest restriction after four to five weeks of consistent use, a system notification citing quest automation, quests locked and nothing else on the account touched. That is narrower than the warning the caution had been making, and someone deciding whether to run this deserves the shape of the penalty rather than a category. Audisk already reads that state and stops with the date rather than failing quietly. One report is not a pattern and nothing stops Discord from acting on the whole account instead, which the caution still says.
 
-It is only needed for the standalone script when the renderer cannot directly reach the required activity backend and the Vencord native helper is unavailable. The relay listens on loopback only and requires the Audisk request marker header.
+### v4.11.0
+- **Companion plugins can read Audisk's runtime instead of parsing its console output.** #82 from [@Herzchens](https://github.com/Herzchens), asked for in #80. A new read-only `subscribeEvents(listener)` on the companion surface publishes what Audisk already knows at the moment it knows it: event code, category, level, quest id and name, task type, and normalized failure metadata carrying `terminal`, `retryable`, `attempt`, `maxAttempts`, `httpStatus`, `upstreamCode` and a reason. Every published code declares whether its contract is stable or provisional, which is the part that makes it survivable: [QuestUI](https://github.com/Herzchens/QuestUI) had been recovering these facts by matching Audisk's prose, and v4.10.12 and v4.10.13 each reworded a line without either of us treating it as a breaking change. Measured against the shipped classifier, three of those rewordings were being misread, including a deliberate skip reported as a generic warning with no quest attached. Delivery is observational rather than a control hook: the listener set is snapshotted at emission, delivery happens on the next microtask in FIFO order, and a listener that throws cannot reach Audisk or the other listeners. No request bodies, authorization headers, OAuth codes or proxy tickets are exposed, and credential-shaped values are sanitized at the producer, including inside stringified JSON errors and query strings.
+- **And they can read the scheduler without inventing a second, wrong copy of it.** #84, also from Herzchens. `getSchedulerSnapshot()` and `subscribeSchedulerState()` expose the `game` and `video` lanes, each lane's effective concurrency limit for the active batch, how many quests are running and how many are waiting in it, and whether a given quest is one of the running ones. It deliberately does not expose queue position. Audisk cannot honestly promise an ordering: the lane array is rebuilt every cycle from an iteration over Discord's own quest map, there is a randomized gap between starts, and once a lane is at its limit the next task to begin is decided by whichever one finishes first. An index exists at any instant but `QUEUED #3` would be a guarantee the scheduler does not make. The lane rule now lives in one exported function that both the scheduler and the companion view call, with an exhaustive `Record<TaskType, SchedulerLane>` behind it, so a sixth task family cannot be added without the lane contract being updated in the same change.
+- **The achievement bypass can no longer create an OAuth grant it is unable to revoke.** Found by Herzchens auditing the account-switch invariants and reported in #81, fixed in #83. `bypassAchievement` took a fresh, nullable snapshot of the current Discord user, and the compensating cleanup in its `finally` was gated on that snapshot being non-null. Audisk deliberately treats a missing identity as an observation gap rather than an account switch, so a task stays alive through one, which meant a bypass could run and create a grant while the value it needed in order to revoke it was `null`, and the cleanup was skipped in silence. The run's confirmed owner was already attached to the task object and simply was not visible in the type the bypass could see. It is now, the bypass refuses to begin authorization without it, ownership is rechecked at four boundaries including after the grant snapshot settles, cleanup arms only once the authorization request has actually been dispatched, and a transient gap defers the quest to a later cycle instead of failing it. Cleanup itself now fails closed on an unknown identity and reports it as unavailable rather than mislabelling it as an account change. Nobody has watched a real grant be created and revoked through the new path; the regression coverage is for the cleanup contract, and the refusal itself is verified by reading.
+- **`UPDATE.cmd` recovers a companion checkout whose upstream rewrote history.** Part of #82. The `--ff-only` behaviour was right to refuse a diverged checkout, but it also left a completely untouched one stuck forever after an upstream force-push, which is what happened to QuestUI between v1.1.0 and v1.2.0. It now resets automatically in exactly one case: the checkout was clean, its `HEAD` equalled the upstream from before the fetch, the upstream actually moved, and all of that still holds when re-read immediately before the reset. Local edits, staged changes, untracked files and local commits are never reset without an explicit decision, and ignored files are never cleaned. The revalidation is the guard that matters, and it is the one the regression suite catches the removal of.
+- **Every line Audisk logs now opens with one of eleven domain tags.** A companion running against an older Audisk has nothing but the console to classify by, and the tag set had quietly grown to twenty as each new file picked its own word, including `[ACTIVITY]`, which is a task type rather than a domain. `[ACTIVITY]`, `[FetchGame]`, `[Dispatcher]`, `[Lifecycle]`, `[Notification]`, `[Settings]`, `[Stop]` and `[UI]` now sit under `[Task]` or `[System]`. The eleven line up one to one with the structured event categories, so a companion that falls back from the event API to console parsing lands on the same taxonomy. Adding a twelfth is a breaking change for companions from here on, and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) says so. The wording after the tag is still not promised.
 
-See `tools/audisk-relay/README.md` for usage and security notes.
+### v4.10.13
+- **A quest this client cannot run came back on every cycle, forever.** Reported by [@ZaryImortal](https://github.com/ZaryImortal) in #78 as a run that kept picking up the same quest until he paused it, diagnosed and fixed by [@mods-hd](https://github.com/mods-hd) in #79. The scheduler asks five questions before it queues a quest, and four of them logged their answer and moved on without marking the quest skipped. The active filter reads the skipped set and nothing else, so those four handed the same quest straight back on the next scan. A Battlefield 6 quest hit the one for a task type with no handler and was rescanned once a cycle for thirty-four cycles in the report. The five questions are now one answer, `questBlocker`, which returns the reason as the sentence to log or nothing when the quest can run, and the caller skips whatever it names, so a sixth reason cannot be added without the skip coming with it.
+- **`ACHIEVEMENT_IN_GAME` is named rather than reported as unknown.** It arrived on that Battlefield 6 quest and is not `ACHIEVEMENT_IN_ACTIVITY`: there is no embedded activity behind it and no `discordsays` backend, so the OAuth bypass has nothing to authorize against. The quest wants an achievement earned in the retail game with the game linked to the account, which is a real play session by design. The log used to say `Unknown task type: <quest name>`, which gave the person reporting it nothing to send and gave us nothing to work from. It now names the keys the quest offered and why none of them can be driven here, and a console-only quest reads differently from one whose task type simply has no handler.
+- **A run that finished nothing no longer says everything was completed.** `failTask` puts a quest on the skip list exactly like a blocked one does, so a run whose only quest died in a handler emptied the queue with no count of anything and announced success, with the completion sound. Raised by [@Herzchens](https://github.com/Herzchens) in review. The wrap-up now counts an outcome written per quest at the moment the run decides it, completed, blocked or failed, instead of reading `completedAt` back afterwards. That also settles a quest being counted twice: one Audisk skipped and the user then finished by hand used to land in both columns, and in the userscript a quest that was never even selected could inflate the finished count. Completed overwrites an earlier blocked or failed and nothing overwrites completed.
+- **The userscript and the plugin no longer disagree about which task config is authoritative.** Also from Herzchens' review. The plugin has preferred a populated `taskConfigV2` over the legacy `taskConfig` since that rule was split out, with a regression test behind it, while `index.js` still took the legacy one whenever both existed and could decide from stale task and application metadata. Both engines now apply the same rule.
+- **The plugin was invisible to UserpluginInstaller, which is how our own README tells people to install it.** #77, also from mods-hd. That installer reads plugin metadata with a regex that allows only whitespace and comments between `name` and `description`, and our `version` key sat in that gap, so the match returned null and the plugin was dropped from its UserPlugins tab along with its uninstall and update buttons. Running the installer's own regex against `index.tsx` returns null before the change and the correct name and description after it. The key moved below `description` with a comment saying why, since it is otherwise the kind of thing that gets tidied back.
 
-## Update behavior
+### v4.10.12
+- **One failed heartbeat ended a game quest, and the message blamed silence for it.** Reported by [@ZaryImortal](https://github.com/ZaryImortal) in #74 as a quest that plays for five to twelve minutes and then stops on its own, diagnosed and fixed by [@mods-hd](https://github.com/mods-hd) in #76. Audisk sends nothing for `PLAY_ON_DESKTOP` and `STREAM_ON_DESKTOP`: Discord beats every 60 seconds and Audisk reads the replies. Discord does not retry a failed beat, it dispatches the failure and the next attempt is the tick already scheduled 60s out. Audisk's 90 second watchdog was only ever rearmed by a success, so a beat that failed at t=60 left the deadline at t=90 and the task died 30 seconds before the beat that would have recovered it. Any transient error anywhere in a run ended it, which is why it looked like a random stop after a handful of minutes. The same arithmetic capped the consecutive-failure limit at one for these two task types, since a second failure needs 120 seconds, so the branch that names Discord's own status code had never once run for a game quest and every one of these deaths was reported as silence. A failure now rearms the watchdog too, leaving five consecutive failures as the thing that gives up, and the give-up line carries the failed beats and the last error. A failure before anything has been credited keeps the original deadline on purpose, so the answer to #43, that Discord is not accepting the injected process on this client, still arrives in a beat and a half instead of five minutes. The rule moved into `heartbeatWatchdog.ts` behind injected timers so the timing is under test rather than described: nine cases, three of which fail if the rearm is taken back out, checked by doing exactly that.
+- **The userscript could not see a failed beat at all.** Its `CONST.EVT` carried only `QUESTS_SEND_HEARTBEAT_SUCCESS`, so on that side a failure was invisible, the task died 90 seconds later, and there was nothing to name the cause with. It subscribes to the failure event now, describes the error the same way the plugin does, unsubscribes on cleanup, and gives up on the same rule.
+- **`UPDATE.cmd` now fast-forwards the other userplugins in the checkout.** People run companion plugins like [QuestUI](https://github.com/Herzchens/QuestUI) from the same `src\userplugins` folder the devbuild installer manages, and nothing ever moved them again, so getting a new version meant deleting the folder and cloning it back. It pulls them with the rebuild instead. Pull only, never a reset or a delete: a checkout with local edits or a diverged branch is reported and left byte for byte as it was, and the build still runs either way. If the build then fails, the plugins that moved in that run are named, because a break right after a third-party plugin pulled is usually that plugin rather than Audisk.
+- QuestUI is listed in the README under Companion plugins, requested in #48.
 
-`UPDATE.cmd` updates the Vencord source, refreshes Audisk when possible, builds transactionally, verifies the generated runtime, and restores the previously verified build if a build fails.
+### v4.10.11
+- **Auto Start ran before Discord had any quests, decided everything was already finished, and stopped.** Reported by [@ZaryImortal](https://github.com/ZaryImortal) in #74: with the setting on, a fresh Discord launch never started anything and the quests only ran after a reload or a manual `/audisk start`. Vencord starts plugins well before Discord fetches its quest list. Measured here on Stable 1.0.9255 from a cold launch: the plugin started at +3.5s, the engine ran its first cycle at +4.0s, and `QuestStore` was empty until +5.4s. The cycle read an empty store, and an empty store was indistinguishable from a store full of completed quests, so it printed `All available quests are completed!` and shut down. The engine now waits for Discord's `QUESTS_FETCH_CURRENT_QUESTS_SUCCESS` before the first cycle, skips the wait when the store is already populated so a manual start costs nothing, and gives up after 25 seconds rather than hanging. Verified on the same cold launch: `[Startup] Quest list arrived after 277ms, 71 quest(s).` now sits between the engine starting and cycle #1. An empty quest list is also no longer reported as everything being done, in the plugin and in the userscript.
+- **A quest that offered streaming alongside a playable task was driven down the stream path, which cannot finish.** `STREAM_ON_DESKTOP` has never worked and the docs said it did. Discord decides which stream quests are progressing in `QuestProgressManager.getActivelyProgressingStreamOnDesktopQuests()`, which requires `getCurrentUserActiveStream()` to return a real Go Live and the channel to hold at least two voice states, both checked before it reads the `getStreamerActiveStreamMetadata()` that Audisk fakes. `initiateHeartbeat` checks the live stream again and terminates if it is absent, and derives the stream key from it rather than from the faked metadata. Read off Stable 1.0.9255 and Canary 1.0.1148, which carry the same module, and measured with the engine's own spoof installed: the set stays empty, no heartbeat is ever opened, and the task times out. Stream now sorts last of the desktop families, so a quest carrying it beside `PLAY_ON_DESKTOP` or `WATCH_VIDEO` takes the working task instead. The order moved into `questConfig.ts` with tests so it cannot drift back. Worth saying plainly: across 71 quests on a live account, including 47 expired ones, exactly zero carried a stream task, so this is a trap being removed rather than a problem anyone is hitting today. Tracked in #75, and the reasoning is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-The health marker for the Audisk Vencord build is stored under the Audisk install directory and contains SHA-256 hashes for the required Vencord runtime files.
+### v4.10.10
+- **The auto-update installer failed on its second run, on every machine, in v4.10.9.** Reported by [@ZaryImortal](https://github.com/ZaryImortal) in #73, fixed by [@Herzchens](https://github.com/Herzchens) in #72. The build-health stamp added in v4.10.9 writes itself atomically, and the overwrite path passed a bare `$null` as the backup path. PowerShell turns that into an empty string when it binds to a `[string]` method parameter, so `File.Replace` rejected it as a malformed path and the installer aborted with `could not persist the Vencord runtime health stamp` after building successfully. It only ever affected runs where a stamp already existed, which is why it was a second-run failure and why a first install looked fine. Verified here by reproducing the exact error on the shipped code and then running the real installer twice against the branch, which now completes both times and leaves no temporary files behind.
+- **The same installer printed a wall of red before it even started.** The preflight passed an empty branch into a parameter constrained to `stable`/`canary`/`ptb`, so the validator complained before the prompt that was about to ask for the branch anyway. The empty case is handled properly now, and an unrecognised branch is still refused, with a message that says what the accepted values are instead of restating the attribute.
+- **The health stamp no longer writes a disposable backup file at all.** Reviewed by [@mods-hd](https://github.com/mods-hd), who identified the root cause independently and pointed out that `[NullString]::Value` passes a genuine null through, which removes both the temporary file and the case where an antivirus holding its handle would leave it behind. Also from his review: the installer test fixture rewrites `start` into a stub so it can never launch a real client, but the pattern was anchored in a way that missed the one indented inside a conditional block, leaving a live `start` in a fixture whose whole contract is that it launches nothing. It never fired, and the assertion that would have caught it now exists.
 
-Other git-backed userplugins can be updated by the companion updater, but the `audisk` plugin directory is excluded from that sweep because Audisk has its own update path.
+### v4.10.9
+- **The bundle installer could replace your Vencord build and report success when nothing would actually load it** (#71, by [@Herzchens](https://github.com/Herzchens)). Having a Discord folder is not the same as that client being patched to use `%APPDATA%\Vencord`, and the installer never checked. It now verifies the active `app.asar` of the clients it may touch before it changes anything, and stops with an explanation instead of leaving someone with a "Done!" and a plugin that never appears. Checked both ways here: a patched Canary installs cleanly end to end, and every arrangement where the running or fallback client is not patched stops with nothing closed and nothing replaced.
+- **The rest of the installer hardening, same PR.** A `dist` directory is no longer enough to be treated as a usable Vencord build; all four desktop runtime files must be present and non-empty. The replacement is staged and rolled back if it cannot complete, and the recovery backup is refreshed from the current usable state rather than preserving a copy from the first install forever. Only updater processes living under a Discord install root are stopped, instead of everything named `Update.exe`. A client that was closed and cannot be reopened no longer causes a different Discord flavour to be launched at you. On the devbuild side: the target flavour now follows the client you are actually running, `-DiscordBranch` can name it explicitly, Node 25 and newer work without Corepack by reading the pnpm version Vencord asks for, builds are transactional with a hash stamp so a half-written `dist` is never promoted to known-good, and `app.asar` recovery has to prove it worked rather than assuming a rename succeeded.
+- **The release packager now proves the bundle came from a clean source tree.** It used to scan the built renderer for markers of specific third-party plugins, which only ever caught the ones somebody had thought to list, and that is how a foreign plugin shipped inside two v4.9.x/v4.10.x bundles. It now requires the source tree behind the dist to contain no userplugin except `Audisk` and refuses to package otherwise. Also from #71: Windows installer regression coverage, run in CI against Windows PowerShell 5.1 and PowerShell 7 across Node 22, 24 and 25.
 
-## Failure recovery
+### v4.10.8
+- **The bundle installer has been dying halfway through on every run since June.** Found by [@mods-hd](https://github.com/mods-hd) while fixing something else, in #70. `INSTALL.cmd` had an unescaped `)` inside the error message under the copy step, and `cmd` parses a parenthesised block before deciding whether to run it, so the block ended early and the leftover `.` aborted the script whether or not the copy had actually failed. The files were already copied by then, so installs worked, but Discord was force-closed at step 1 and never reopened and none of the "now enable the plugin" instructions ever printed. From the user's side the tool killed Discord and did nothing. It shipped in every release from v4.9.3 to v4.10.7. Reproduced here against a pristine `main` with the branch not even taken, and again end to end after the fix.
+- **The bundle installer only ever handled Discord Stable** (#69, reported by [@kxlt6969](https://github.com/kxlt6969), fixed by [@mods-hd](https://github.com/mods-hd)). It closed `Discord.exe` and reopened Stable's `Update.exe`, both hardcoded, so on a Canary or PTB machine it closed nothing and reopened nothing. The copy itself was always fine, because Vencord keeps one `dist` folder for every branch, which is also why a running Canary locks exactly the files a running Stable would. All three builds are closed now, the ones that were actually open are reopened, and when Discord was already shut it starts the only installed build rather than guessing between several. Verified over seven layouts with a stubbed process table, and the detection line checked against a live machine running Stable with Canary installed but closed.
+- **Five things Audisk was inferring that Discord answers directly.** All five came out of reading Discord's own quest code on canary 1.0.1133 rather than from a bug report. `detectType` picked a quest's task by whichever key the server happened to list first, so `startsWith("PLAY")` matched `PLAY_ON_XBOX` as readily as `PLAY_ON_DESKTOP`; 38 of 66 quests on a live account carry two or three keys, and a reordering would have meant injecting a desktop process for a console task and reading progress under a key Discord never credits, silently, for 25 minutes. Discord dispatches `QUESTS_SEND_HEARTBEAT_FAILURE` with the real error on every failed beat and Audisk was not listening, so a failing game quest arrived as 90 seconds of silence followed by a guess; five consecutive failures now abort in about three seconds naming Discord's own status and error code. `questAccessSuspendedUntil` arrives beside the enrollment block in the same fetch and Discord's own client refuses to start a quest while it is set, so a suspended account was being hammered instead of told. Quest expiry was computed twice and differently by the two engines, and neither matched Discord's own answer, which both now ask for. And two account predicates were left on strict equality when the rest became tolerant of a momentary blank identity, which could strand a quest as `RUNNING` for the rest of a run.
 
-The installer deliberately builds before injecting Discord. It verifies the Vencord runtime and keeps rollback information so a partial build is not silently treated as healthy.
+### v4.10.7
+- **`/audisk start` told you it had started something it had already given up on.** Reported by [@4kema](https://github.com/4kema) in #66. The command answered `Started.` and returned, but a run that finds nothing left to farm is over a second later, so the next `/audisk status` read `Idle` and the only explanation was a line in a console the plugin gives nobody a reason to open. It looked like the command did nothing, and [@Herzchens](https://github.com/Herzchens) hit the same thing from QuestUI's side, where the button appeared to bounce straight back. The engine now records why a run ended on its own, `start` reports it when the run ends before the reply does, and `status` says it instead of a flat `Idle`. Checking once after starting was tried and gets it right only about half the time, because the first scan is not reliably finished by then; polling until the engine stops was tried and cost 2.2 seconds on every healthy start, since a healthy start is the one case that never exits the poll early. It races the run against a 400ms deadline instead, so an empty run answers in about 13ms and a real one pays the deadline once.
+- **The plugin now carries a version.** It never had one, so someone reporting a plugin bug could not say which build it came from, and neither could anyone reading the report. That is what stalled #66 for a day. It sits on the plugin object and at the front of every `/audisk status` line, and the packaging script refuses to build if it drifts from the userscript's.
+- **The Vencord plugin can pause or resume one quest without stopping unrelated concurrent work** (#64). `/audisk action:pause quest:<target>` cancels that queued/running task generation and its own cleanup only; omitting `quest` pauses every current queued/running quest. `resume` clears the same session pause state for one quest or all of them and lets Discord's already-recorded progress continue on the next eligible cycle. Targets accept an exact quest id, an exact name, or a unique case-insensitive name fragment and refuse ambiguous fragments instead of guessing. The cancellation boundary is per generation: task-owned delays and queued/429-backoff traffic stop promptly, GAME/STREAM cleanup is quest-scoped, and an old generation can never become active again after Resume. A request already handed to Discord's `RestAPI` cannot be unsent, so the replacement generation waits until that call or compensating OAuth cleanup really settles. Pause state survives Audisk Stop → Start for the same Discord account, resets on account change/reload, and a rapid Pause → Resume → Pause keeps the final Pause intent even while the old generation is still settling. The same lifecycle audit also makes unexpected worker exceptions retire as `FAILED` instead of leaving a phantom `RUNNING` row, and makes account-switch teardown safe against synchronous dashboard observers. The standalone `index.js` userscript is unchanged.
 
-If Discord cannot reopen after a failed injection or recovery:
+### v4.10.6
+- **A stopped achievement quest kept working through the rest of its OAuth chain** (#62, by [@Herzchens](https://github.com/Herzchens), closing the second half of #60). The bypass is a sequence of awaited requests, and only the first of them checked whether the engine was still running. A stop landing inside any later stage let the continuation wake up and start the next one anyway, so a stopped run could still authorize the app, take a proxy ticket, post progress, or report a completion for a run that no longer existed. Every stage now re-checks after its await. Requests already on the wire are still allowed to settle, and the grant cleanup deliberately still runs after a stop, because a request issued before the stop may have created an authorization that has to be revoked. Reproduced on the wire by holding the first request of the chain, stopping, then releasing it: before the fix the stopped run went on to `POST /oauth2/authorize` 1.7 seconds after the stop, after it the chain made no further calls at all.
+- **A failed achievement quest could report another quest's error, or none at all.** Reported by [@Herzchens](https://github.com/Herzchens) in #61, against the diagnostics added in v4.10.1. The bypass kept its reason in a field on the task runner, and every task on that runner shares it. Achievement tasks queue in the same worker pool as games, so with `gameConcurrency` above 1 two of them overlap, and the loser is the one that finishes first: it records why it gave up, then waits out the grant-cleanup request while the other task enters the bypass and resets the field, and reads back nothing. Its row falls back to `no auto-completion path worked` with the real error discarded, which is precisely the blanket message v4.10.1 set out to remove. Reproduced live on two quests failing with distinguishable error codes, with the second task's entry held until the first had recorded its reason: before the fix the first quest reported `no auto-completion path worked` while the second kept its own code, after it each reports its own. The reason now comes back as the return value, so it belongs to the attempt that produced it. The userscript runs its game queue serially, so the race cannot happen there today, but the same shared field was sitting in it and is gone from both engines. While in that code, the guard that rejects a non-numeric application id also stopped returning with no reason at all, which surfaced as the same generic text.
+- **`docs/ARCHITECTURE.md` claimed the traffic queue was the single egress point for every quest call.** It never was. The queue only issues `POST`, so it carries enrollment, heartbeats and video progress, while game metadata lookups, reward claims, the whole OAuth and discordsays chain, and the relay all go out directly. Flagged by [@Herzchens](https://github.com/Herzchens) while reviewing #60. The section now lists both sides and says which new calls belong in the queue.
 
-1. Leave the current Vencord/Audisk folders in place until recovery is complete.
-2. Run the official Vencord installer and choose Repair if necessary.
-3. Re-run `RUN.cmd` after Discord Canary is healthy again.
+### v4.10.5
+- **Stopping a game quest and starting again could silently kill the new run.** Reported by [@Herzchens](https://github.com/Herzchens) in #60. Before injecting a fake process, Audisk fetches the app's metadata over the network, and it only checked whether the engine was still running *before* that request, never after. Stop landing inside that window let the old task wake up afterwards and patch the store on behalf of a run that had already torn down. That is worse than it sounds, because each run's patcher records the store methods it considers real when it is created: a stale run installing on top of a newer one and then restoring its own snapshot takes the newer run's patches with it. Reproduced live with two overlapping runs: run A held inside the metadata request and stopped, run B started and spoofed normally, then A resumed and B's fake game vanished from `RunningGameStore` with the store back to its unpatched state, leaving B running a quest Discord could no longer see. With the check added after the await, B's spoof survives A resuming and only goes away on its own stop. Fixed in both engines.
 
-Do not delete a Vencord folder while Discord's `app.asar` still points at its patcher.
+### v4.10.4
+- **A stopped run could keep working after you started a new one** (#58, by [@Herzchens](https://github.com/Herzchens)). The plugin tracked "is the engine up" with a single module-level flag. A video or activity task can still be sitting inside a sleep when you run `/audisk stop`, and if you started again before it woke, that flag was back to `true` and the old task simply carried on as though its own run had never ended. The old run's teardown could also stop the new one. Each start now gets its own runtime and generation id, and every callback is bound to the generation that created it. Reproduced on the wire before merging: stop a video quest mid-sleep, start a second run that cannot see that quest, and the old run still posted progress for it twice, at 15 and 24 seconds after the restart. With the fix, none.
+- **The installer verified the wrong Discord when you only have PTB or Canary** (#57, by [@Herzchens](https://github.com/Herzchens)). It detects the flavor correctly and patches the right one, but the post-inject check always looked in `%LOCALAPPDATA%\Discord`. On a machine without Stable it found nothing, decided the patch had failed, and rolled back a perfectly good install. Confirmed against the real filesystem for all four layouts: Canary-only and PTB-only rolled back before the fix and verify cleanly after, Stable is unaffected.
+- **`UPDATE.cmd` never actually updated Audisk.** It pulled Vencord, then copied the plugin back out of the `plugin\` folder inside the zip you originally extracted, so it reinstalled the same version every time and quietly pinned you to whatever release you first downloaded (#56). The installer now clones the plugin as its own git checkout and `UPDATE.cmd` pulls it, so new releases arrive without re-downloading anything. Existing installs are converted the first time you run the new `UPDATE.cmd`. Both fall back to the bundled copy if GitHub is unreachable, and say so.
 
-## Repository layout
+### v4.10.3
+- **The `audisk-vencord-bundle` zip now ships the full GPL text and says where its source is.** That bundle is a compiled build of Vencord with our plugin inside it, and Vencord is GPL-3.0-or-later, so handing someone the zip is conveying GPL software. It already carried Vencord's copyright and licensing notice, which esbuild emits into `dist/*.LEGAL.txt`, but not the full licence text that GPL section 4 asks you to convey alongside the program, and nothing in it stated where the corresponding source could be had. The zip now includes `LICENSE-VENCORD.txt` and a README section naming the licence, the upstream repository and the exact build command used, and the packaging script refuses to build a bundle missing any of that.
+- **Correcting how the v4.9.9 and v4.10.0 bundle problem was described.** Those release notes, and the notices left on both releases, said a GPL-3.0 plugin had ended up inside an MIT artifact. That framing was wrong. The bundle has never been MIT: it is a Vencord distribution, so it has always been GPL-3.0-or-later. Only our own plugin inside it is MIT, and it stays MIT. There was therefore no licence incompatibility. What was actually wrong is that a third party's plugin was compiled in and distributed without their permission and without attribution, which is a violation on its own terms and is still ours. The remedy does not change and neither does anything a user should do.
 
-```text
-auto-discord-task/
-|-- RUN.cmd                     # one-click Canary setup
-|-- run.ps1                     # public clean-install launcher
-|-- index.tsx                   # Vencord plugin entry / commands / lifecycle
-|-- audisk.ts                   # engine, scheduler and dashboard registry
-|-- dashboardUi.ts              # floating UI + Kiraa Discord profile button
-|-- tasks.ts                    # per-task execution logic
-|-- traffic.ts                  # request scheduling / retry / cancellation
-|-- patcher.ts                  # Discord store/runtime patch helpers
-|-- settings.ts                 # Vencord plugin settings
-|-- native.ts                   # native requests outside renderer CSP
-|-- index.js                    # standalone Audisk script
-|-- tests/                      # engine regression tests
-|-- docs/                       # architecture and plugin documentation
-`-- tools/
-    |-- audisk-devbuild-installer/
-    |-- audisk-relay/
-    |-- audisk-vencord-bundle/
-    `-- tests/
-```
+### v4.10.2
+- **`/audisk status` says what is finished and what is still owed to you.** It opened with a bare task count and each row was just a status and a percentage, so the two things people actually check, how much is left and whether a reward is sitting unclaimed, were the two things it did not answer (#56). The header now breaks the tasks down by status, a completed quest whose reward has not been collected says so, and a footer tells you how many are waiting and where to claim them. The engine had been marking finished quests `claimable` since the dashboard was written and nothing ever read the flag. It is also not trusted on its own: the flag is written once when the quest finishes, so claiming the reward yourself in Discord afterwards would leave it stale, and the status checks the quest store before saying a reward is outstanding.
 
-## Development checks
+### v4.10.1
+- **`/audisk status` says why a task failed.** A row read `FAILED (0%)` and nothing else, so the only way to find out what happened was to open the console, and for the plugin there is no dashboard log to fall back on. The reason was already being computed and handed to `failTask`; it just never reached the status line. Failed rows now carry it, and the achievement path reports the specific cause instead of a blanket "cannot auto-complete": an age-gated or delisted activity, a bypass that failed with the HTTP status and error code, a missing application id, or the bypass setting being off. The reason is scoped to `FAILED` and cleared on any later row for the same quest, so it cannot end up explaining a state the quest is no longer in.
+- **The `audisk-vencord-bundle` zips for v4.9.9 and v4.10.0 shipped a plugin that is not ours.** The bundle is built from whatever sits in the source clone's `src/userplugins`, and a copy of [QuestUI](https://github.com/Herzchens/QuestUI) had been installed there for testing, so it was compiled into `renderer.js` and `vencordDesktopRenderer.js` inside both zips. QuestUI is GPL-3.0-or-later and our bundle is MIT, so those two artifacts redistributed someone else's plugin under the wrong licence and without their say. Nothing about it was harmful to run and no other artifact was affected: the userscript, the relay and the devbuild installer are all clean, and so is v4.9.8 and everything before it. The packaging script now scans the built bundle for foreign plugin markers and refuses to package rather than trusting the clone to be clean.
 
-The repository includes regression tests for account identity, heartbeat behavior, OAuth cleanup, Quest configuration compatibility, reward parsing, target selection, scheduler state, task cancellation, traffic handling, installer rollback and relay behavior.
+### v4.10.0
+This release came out of reading what Discord's own client puts on the wire and diffing it against what Audisk sends. Every item below was captured at the network layer on a live client, and the real-client side of each comparison came from a genuine game running on the same machine, not from reasoning about the code.
 
-For a full integration check, copy the root `.ts/.tsx` plugin files into a Vencord checkout under `src/userplugins/audisk`, run the relevant tests, then build Vencord and verify the generated `renderer.js` contains `Audisk`.
+- **Audisk's enrollments and claims were missing a field every real one carries.** Discord's quest list ships a server-sealed attribution blob per fetch, and the client hands it straight back on `/enroll` and `/claim-reward` as `traffic_metadata_sealed`. Audisk sent neither sealed field, so every enrollment and every claim it ever made was distinguishable from a real one by a field that was sitting unused on the quest record the whole time. Both requests now carry it. Nothing is forged here: it is the server's own value going back where it came from, which is exactly what the real client does. The claim body also stopped sending `metadata_raw` and `traffic_metadata_raw`, two fields Discord never sends, so extra keys were identifying it just as much as the missing ones. Both bodies now match the real client's key set exactly.
+- **The stream key advertised a four digit number where a user id belongs.** Discord builds these as `call:<channelId>:<ownerId>` or `guild:<guildId>:<channelId>:<ownerId>`, and its own decoder reads the trailing component back as the stream owner. Audisk built `call:<channelId>:<rnd(1000, 9999)>`, so every `ACTIVITY` and `ACHIEVEMENT` heartbeat carried a four digit owner, and a guild voice channel was sent under the `call:` prefix, which decodes as a DM channel id. Fixed in both engines: real snowflake, correct prefix for the channel type.
+- **Those same heartbeats were missing `application_id`.** Discord's heartbeat always sends it. Audisk sent only `stream_key` and `terminal`.
+- **Audisk now stops when Discord has blocked enrollment on the account.** The quest list carries `quest_enrollment_blocked_until` and Audisk never read it, so a blocked account kept requesting against an endpoint already refusing it, which is the worst available response to being flagged. Checked at the top of every cycle, since the block can land mid-run. Costs no extra request: the value is on the store the client already populates.
+- **Activity quests were being run as game quests, and never finished.** Task detection matched `k.includes("PLAY")` before anything else, and `"PLAY_ACTIVITY".includes("PLAY")` is true, so a `PLAY_ACTIVITY` quest was routed to the `GAME` handler: it injected a fake process and then waited for heartbeats Discord does not send for an activity task. The `ACTIVITY` handler was unreachable for its own quest type. Detection now matches the exact keys before the loose prefixes, and the prefixes still catch platform variants like `PLAY_ON_XBOX` and anything new Discord adds. Confirmed both ways on a live client: before the fix the engine logged `Started GAME` and injected a spoofed process; after it, the activity handler runs and sends its own heartbeats.
+- **`ACTIVITY` no longer invents progress.** When the heartbeat reply carried no progress the loop fell back to `cur + 20`, so a server crediting nothing still walked the counter to target and the quest was reported complete on the strength of numbers Audisk made up. It now only advances on a number Discord actually returned, and gives up after five silent beats. Measured after the routing fix made the handler reachable: five beats, then `Discord credited no progress`, instead of counting itself to a target nothing had credited.
 
-## Reporting bugs
+One thing found in the same pass is **not** fixed, because it cannot be. A real game's heartbeat carries `executable_fingerprint`, a native attestation of the running binary; a spoofed game has no process to attest and the field is simply absent. Its `executable_path` differs in shape too. Discord accepted and credited both kinds of heartbeat during testing, so this is not enforced at request time today, but `PLAY_ON_DESKTOP` and `STREAM_ON_DESKTOP` spoofing is distinguishable from real play at the request level and no amount of client-side work changes that.
 
-A useful report includes:
+### v4.9.9
+- **Video polling goes back to Discord's own cadence.** v4.8 halved the interval to 3.5-4.75s and the changelog claimed that cut each video quest's wall clock in half. It did not. Progress advances by real elapsed time, so a quest takes `target` seconds either way and the shorter interval only doubled the number of requests. Measured on a live 68 second quest before the revert: 73 seconds of wall clock across 18 requests. Back to 7-9.5s, which is what a real player sends and roughly half the traffic for the same result. The synthetic first ping went with it: it fired 200-350ms in with a timestamp of 0.200-0.250, so every video quest from every user opened with a value inside the same 50ms window, which is a pattern rather than a player. Measured after, on a quest still at zero server-side progress, which is the only state that ping ever fired in: the first request leaves 9.38s in carrying a timestamp of 7.729948, and a 25 second quest finished in four requests.
+- **A page reload no longer leaves your Game Activity setting turned off.** With hide-activity on, Audisk turns Discord's own "Display current activity as a status message" off for the duration and restores it on stop. Cleanup only runs if the renderer survives, and a plain reload skips it, which is a problem because reloading is the first thing most people try when something looks stuck. Reproduced: reload mid-run and the setting stayed off with no engine running and nothing left holding the old value. The plugin now writes a breadcrumb before turning it off and repairs it when the plugin next loads, so it comes back without needing another quest. The userscript, which persists nothing by design, attempts the restore on `pagehide` and says plainly at suppression time what to re-enable if the client goes away first.
+- **The plugin can start itself when you accept a quest** &mdash; new `Watch for enrollments` setting, off by default. While the engine is idle the plugin subscribes to `QuestStore` and starts a run when a quest gains `enrolledAt`, so accepting a quest in Discord's Quests page is enough on its own. The watcher is owned by the plugin rather than the engine, because the engine tears itself down whenever the queue drains and a watcher living inside that lifecycle would switch itself off the moment it succeeded: it is armed by plugin load and `/audisk start`, left armed when a run ends on its own, and disarmed by `/audisk stop` and by disabling the plugin, since an explicit stop should not be undone by the engine restarting itself. It only reacts to a quest that gained `enrolledAt` since the last look, not to any store change, so progress ticks and dismissals don't wake it. Worth being clear about what turning it on means: the engine can then start while you are away from the keyboard, which is a change in exposure under Discord's quest-automation enforcement rather than only a convenience. It also does not narrow what a run picks up, so pair it with auto-enroll off unless you want one accepted quest to wake a run that enrolls in everything else (#47).
+- **Auto-enroll is a setting in the plugin now** &mdash; the plugin always JIT-enrolled every available quest, so there was no way to run only the ones you accepted yourself; the userscript has had that toggle since the picker landed in v4.5, and this is a port of it rather than a new design. With it off, a quest you have not accepted is left untouched and listed as `PENDING` instead of being queued, and because the cycle re-reads the quest list every few seconds it starts on its own the moment you accept it in Discord, with no restart and no state that outlives the run. Default is on, so nothing changes unless you turn it off. `/audisk status` also says what a pending quest is waiting for: the userscript can afford a bare `PENDING` because its dashboard draws an ENROLL button next to the row, and the plugin has no dashboard to draw one on (#47).
 
-- Audisk version
-- Discord branch and version
-- Vencord build/revision
-- Quest name and task type
-- current dashboard state
-- relevant Audisk log lines
-- whether the problem reproduces after a clean stop/start
+### v4.9.8
+- **Fix: hide-activity never hid anything** &mdash; both engines implemented it by skipping their own `LOCAL_ACTIVITY_UPDATE` dispatch, but that event only carries RPC-socket activities. Discord builds the "Playing X" presence from the running-game store itself (`LocalActivityStore` / `ActivityTrackingStore` read `getVisibleGame` / `getVisibleRunningGames`), which is exactly what the Patcher started overriding in v4.9.6 to get heartbeats flowing again (#43) &mdash; so since that release the spoof itself published the status and the toggle was a no-op. Both engines now turn Discord's own `status.showCurrentGame` off while a fake game is up and restore the previous value on cleanup, leaving the store spoof (and therefore quest eligibility) untouched. The friends-list entry reads "Not Sharing" while quests run and progress advances normally. The plugin goes through Vencord's `UserSettingsAPI`, which it now declares as a dependency &mdash; `getUserSetting()` throws for plugins that don't, and that API is not enabled by default; the userscript reaches the protobuf settings directly, since a console script has no plugin manifest to declare anything with. The plugin also read the setting once at engine start, so toggling it mid-run did nothing until stop/start; it is read live now, and the plugin acts on the change the moment it is made. Reading it live is necessary but not sufficient: suppression is recomputed when a fake game is added or removed, and a game quest holds one for up to 25 minutes, so a toggle mid-quest would still have sat there doing nothing. The plugin subscribes to the setting and re-evaluates on the spot, detaching the listener on stop. Known limitation: if Discord is force-killed mid-run, cleanup never runs and the setting stays off until re-enabled by hand.
+- **Fix: stopping a quest part-way locked it out of every later start** &mdash; the plugin's dashboard registry is module state that outlives the engine, and `stopAudisk()` never touched it, so a quest interrupted by `/audisk stop` kept an entry reading `RUNNING`. The cycle loop skips quests in that state, so the queue came up empty on every subsequent `/audisk start` while `/audisk status` still reported the phantom task. In-flight entries are retired to `STOPPED` on shutdown, late progress updates can no longer re-mark a quest as running once the engine is down, and rows from earlier runs are pruned at start instead of at stop so results stay readable after a run. Auditing the rest of the plugin's module state for the same pattern turned up five more, two of which could hang the cycle loop outright: a rate-limited request rescheduled past a shutdown was dropped without settling its promise, so the awaiting task waited forever (the userscript already rejected with `Shutdown` here &mdash; the port had lost that branch); and a stopped `GAME`/`STREAM` task never resolved at all, because the shutdown cleanup cleared the very timers that would have resolved it, leaving the loop parked and the engine's own teardown unreachable. Either hang then desynced the slash command's private `isRunning` flag from the engine, at which point `/audisk stop` answered "Not running." while the engine was still up &mdash; it now reads the engine directly. Also fixed in both engines: two overlapping `STREAM` tasks stashed each other's spoofed `getStreamerActiveStreamMetadata` and one of them restored a fake permanently, so the original is captured once and the spoof refcounted.
+- **Fix: userscript lifecycle and transport-fallback issues** &mdash; the `>` dashboard hotkey registered a document-level listener that shutdown never detached, so it outlived the dashboard and stacked one more copy on every paste, each closing over a dead overlay. Clicking **STOP** and pasting again within a second was also a dead end: the re-entry guard stayed held for the full grace period, so the new paste was refused with "Already running." while the overlay it had just re-shown was removed a moment later by the old timer, leaving nothing on screen; the guard is released immediately now, and the teardown holds references to its own nodes so it can no longer delete a newer dashboard's stylesheet. The manual **CLAIM REWARD** button could stick at "WAITING..." for the rest of the session when the claim endpoint answered 2xx without `claimed_at` &mdash; neither the success branch nor the catch fired, so the state was never reset. The localhost-relay probe cached its answer for the whole run in both directions, so a relay started mid-run was never picked up and one that died was still used; it now re-probes on a one-minute TTL and drops the cached answer if the relay stops responding mid-POST, letting the next transport take over. The `DiscordNative` fallback no longer speculatively invokes `fileManager.fetchURL` or `processUtils.fetch` &mdash; neither is an HTTP client, and calling privileged IPC with a POST-shaped argument risks side effects the return-shape check cannot detect. Quest ids are now escaped where they reach `innerHTML`, matching the rule already applied to quest and reward names.
+- **Fix (plugin): `Verbose logging` did nothing at all** &mdash; the setting was defined but never read anywhere in the plugin. Vencord's `Logger.debug` always calls `console.debug`, which browsers hide unless the console is switched to Verbose, so every debug line was emitted regardless of the toggle and whether you saw it came down to a DevTools filter. Debug output now goes through one gate: with the setting on it is raised to info level, where it shows by default; with it off nothing changes from before.
+- **Fix (plugin): enabling `Try achievement bypass` mid-run left already-skipped quests skipped** &mdash; when the bypass is off the plugin logs "enable it in settings if you want it" and marks the quest skipped, in the same set used for quests that genuinely cannot be completed. Acting on that message did nothing until a full stop/start, because `activeQuests()` filters that set for the life of the run. A refusal for want of consent is now recorded separately from a real failure, and switching the setting on returns those quests to the queue for the next cycle.
+- **Concurrency sliders now say when they apply** &mdash; both are read when a cycle starts, so a change affects the next batch rather than tasks already running. Behaviour is unchanged; it just wasn't written down anywhere.
+- Adds `hooks.ts`, a dependency-free bridge that lets a settings change reach the running engine. `settings.ts` cannot import `Audisk.ts` directly &mdash; that closes an import cycle &mdash; and the engine clears its handlers on stop so a hook never outlives the run it belongs to.
 
-Never post account tokens, OAuth codes, session secrets, or private Discord credentials.
+### v4.9.7
+- **The repo installs as a Vencord userplugin now** &mdash; paste `https://github.com/AkiyamaKira2003/auto-discord-task` into nin0's `UserpluginInstaller` and it clones, builds and self-updates from there, no manual clone or file copying (#42). That installer does a plain `git clone` into `src/userplugins`, and Vencord's build only reads `index.ts(x)` and `native.ts` from the top level of a plugin folder, so the plugin sources had to move out of `vencord-plugin/` and up to the repo root; a subdirectory layout cannot work with either. `vencord-plugin/README.md` moved to [`docs/VENCORD-PLUGIN.md`](docs/VENCORD-PLUGIN.md). The userscript keeps its path and its raw URL and is not part of the plugin build &mdash; both esbuild and the installer resolve `index.tsx` ahead of `index.js`. A CI job now clones Vencord, checks this repo out the way the installer would, builds, and asserts the plugin reached the renderer and main-process bundles with the slash command registered and no userscript leakage; it builds against Vencord's default branch weekly, so an upstream change that breaks the plugin shows up there instead of in a bug report. The quest engine itself is unchanged this release.
+
+### v4.9.6
+- **Fix: game quests never progressed** &mdash; Discord's `taskConfigV2` moved the application off the quest config and onto each task (`tasks.PLAY_ON_DESKTOP.applications[0].id`); `config.application.id` no longer exists, so every game/stream quest fell through to a `?? 0` fallback and injected a process claiming to be application `0`. Discord could never match that to the quest, so it never sent a single heartbeat and the quest sat at 0% (#43). This hit Canary first and has since reached Stable. Canary also derives quest eligibility from `getVisibleGame` / `getVisibleRunningGames` / `getRunningDiscordApplicationIds` / `getCandidateGames`, which the old patch left empty &mdash; all four are now patched when present and restored on cleanup. Two things had been hiding the failure: the dashboard ticker incremented progress locally every second regardless of heartbeats, so a quest earning nothing still showed a bar climbing to 100%, and nothing failed until the 25-minute timer. The ticker now extrapolates only from the last real heartbeat, so it can't run past what Discord reported, and a game/stream task with no heartbeat inside 90s aborts with a clear message. Progress also reads the task key detected from the config instead of a hardcoded `PLAY_ON_DESKTOP` (so `PLAY_ON_DESKTOP_V2` resolves) and seeds from the server's stored value on start. The legacy `config.application.id` path remains as a fallback for clients that haven't picked up the change yet.
+- **Fix: the achievement bypass was dead for the same reason** &mdash; `bypassAchievement` still read `config.application.id` directly and returned early when it resolved to nothing, so every `ACHIEVEMENT_IN_ACTIVITY` quest fell straight through to "Cannot auto-complete" without ever attempting the Discord Says flow. It now uses the application id already resolved for the task, keeping the legacy read as a fallback and the numeric guard unchanged. Verified end to end against live quests on both engines: the userscript completes the quest through the localhost relay, the Vencord plugin through its native module, and in both cases the temporary OAuth grant is revoked afterwards while pre-existing authorizations are left untouched.
+- **Fix: a game/stream quest that stalled after its first heartbeat still idled for 25 minutes** &mdash; the no-heartbeat watchdog only checked once, so it caught a quest that never started but not one that stopped partway. It is now re-armed on every heartbeat and reports which case it hit.
+- **Fix (plugin): quests skipped for a missing application id were re-announced every cycle** &mdash; the skip was recorded in a set that nothing reads, so the same quest was re-detected and re-logged every few seconds. It now goes into the set `activeQuests()` actually filters on.
+
+### v4.9.5
+- **Fix: the Vencord installer bundle no longer breaks Vencord's updater** &mdash; The bundle was shipping a build compiled in git-updater mode (`Standalone: false`) into `%APPDATA%\Vencord`, which has no git repo, so Vencord threw `not a git repository` every launch and showed "can't check for updates" (#39). The plugin was never the cause; it was the build flags. The bundle is now built `--standalone --disable-updater`, which turns the updater off cleanly (no error, and no risk of the standalone HTTP updater silently reverting the dist to vanilla and deleting the plugin). Honest tradeoff, now documented: Vencord is frozen at the bundled version; to get updates back, reinstall official Vencord and re-run the installer. `INSTALL.cmd` now backs up your existing Vencord build to `dist.Audisk-backup` first so it's undoable. Userscript and plugin source are unchanged this release; only the installer bundle differs. Root cause was pinned by a senior review panel that read the Vencord updater internals.
+
+### v4.9.4
+- **Deeper security pass on the ACHIEVEMENT bypass** &mdash; A multi-angle audit following #38 surfaced more to address. The bypass now requires **explicit consent before authorizing any app**: the userscript shows a popup with the app name, the OAuth scopes, and a note that it revokes right after (defaults to decline, so an idle prompt never authorizes); the Vencord plugin gates it behind an off-by-default setting. A failed grant snapshot now **aborts before authorizing** instead of authorizing without a way to revoke. `redirect: "error"` on every `discordsays.com` fetch (userscript and native module) so a 3xx can't bounce the auth token to another host. The native module validates the `questId` and `Referer`, not only the `appId`. The relay reflects CORS only to Discord origins, drops non-allowlisted headers, caps the body size, and checks the `Host`. **Also fixed a stored-DOM-injection bug** &mdash; a crafted quest or reward name could inject markup into the dashboard; all server-controlled strings are now escaped. Plus assorted hardening: guarded JSON parsing of activity responses, NaN-safe quest expiry, and listener/audio/shutdown leak fixes. `docs/ARCHITECTURE.md` rewritten to match the current engine.
+
+### v4.9.3
+- **Security hardening of the ACHIEVEMENT bypass** &mdash; From a detailed security report (#38). The OAuth grant cleanup now runs in a `finally` block, so a failed bypass never leaves the quest's app authorized on your account, and it only revokes the grant Audisk created (diffed against a pre-flow snapshot of your existing grants) so it won't touch an authorization that already existed before the run. The localhost relay no longer follows redirects and rejects any host or path outside the two `discordsays.com` endpoints it needs. The userscript and the Vencord native module both validate the application id is numeric before building any URL (closes the SSRF angle). The README now spells out the full OAuth lifecycle and the account-level ban risk. The non-tech installer bundle is English-only now (`INSTALL.cmd`).
+
+### v4.9.2
+- **Cleaner picker when the options panel is open** &mdash; Clicking the gear now hides the quest list and the START/DESELECT buttons while the options are showing, so the panel isn't buried under a long quest list. Click the gear again to bring them back. Minor CSS spacing fixes too. Thanks to @TirOFlanc in #37.
+
+### v4.9.1
+- **Fix: Vencord plugin skipped GAME/STREAM quests on desktop** &mdash; The plugin detected "desktop" by probing `window.DiscordNative`, which isn't reliably visible from the plugin's execution context. Game quests were wrongly skipped with `requires desktop app. Skipping.` even on Discord Desktop, while the userscript handled them fine. Switched to Vencord's build-time `IS_DISCORD_DESKTOP` / `IS_VESKTOP` globals. Resolves #35.
+
+### v4.9
+- **`ACHIEVEMENT_IN_ACTIVITY` auto-bypass works on stock Discord Desktop** &mdash; no Vencord, no BetterDiscord, no client mod. The trick is a tiny localhost HTTP relay ([`tools/audisk-relay/`](tools/audisk-relay/)) that the userscript probes on boot. Discord's CSP allows `connect-src http://127.0.0.1:*` (for RPC with games); the relay forwards POSTs to `*.discordsays.com` from outside the browser sandbox. One PowerShell script + one `.cmd` launcher, ~100 lines total. Download from the release page, double-click to start, leave the window open, paste the userscript. Done.
+- **Transport picker priority** &mdash; `_bypassPost` now tries (1) Audisk Relay on `127.0.0.1:43210`, (2) Vencord plugin via `VencordNative.pluginHelpers.Audisk`, (3) `DiscordNative` HTTP probes (best-effort for future Discord builds), (4) direct `fetch` (web Discord). First hit wins.
+
+### v4.8.2
+- **Userscript hands off discordsays POSTs to the Vencord plugin when installed** &mdash; New `_bypassPost` transport picker. On Discord Desktop with Vencord + Audisk plugin installed, the userscript console script now detects `VencordNative.pluginHelpers.Audisk` and routes the CSP-blocked POSTs through the plugin's native module instead of failing. So `ACHIEVEMENT_IN_ACTIVITY` auto-completes from the standalone userscript too, as long as the Vencord plugin is also installed. Also probes `DiscordNative.http`, `DiscordNative.fileManager.fetchURL`, and a few sibling paths as a best-effort fallback in case a future Discord build exposes generic HTTP. On web Discord (no Vencord, no CSP), direct `fetch` works.
+
+### v4.8.1
+- **Honest CSP error message + Vencord native bypass** &mdash; Testing v4.8 surfaced that Discord's renderer CSP (`connect-src` allowlist) blocks the final `fetch()` to `*.discordsays.com` from the userscript. Steps 1-2 of the bypass (OAuth2 authorize + proxy-ticket mint) work; step 3 (POST to the activity backend) does not. The userscript now detects the CSP failure and prints a clear message pointing to the Vencord plugin instead of "Failed to fetch". The [Vencord plugin port](docs/VENCORD-PLUGIN.md) gained a native module (`native.ts`) that runs the discordsays POSTs in the Electron main process where CSP doesn't apply &mdash; **confirmed working in production against real ACHIEVEMENT_IN_ACTIVITY quests**.
+
+### v4.8
+- **ACHIEVEMENT_IN_ACTIVITY auto-bypass** &mdash; New OAuth2 → discordsays.com handshake. When Discord's heartbeat endpoint rejects (HTTP 403, which it does for most current Achievement quests), Audisk now authorizes against the activity's own backend, mints a proxy ticket, and POSTs the target progress directly. No more 25-minute passive wait, no more "join the activity manually". The previous picker toggle to skip these is now mandatory behavior &mdash; if both paths fail (typically age-gated or delisted activities like *The Odyssey*), the quest is skipped cleanly instead of blocking a queue slot. **Note: the discordsays.com POSTs are blocked by Discord's renderer CSP &mdash; the userscript can only complete the OAuth handshake locally. See [v4.8.1](#v481) for the workaround.**
+- **2x faster video polling** &mdash; Video heartbeats now run at 3.5-4.75s instead of 7-9.5s. Discord's server-side validation accepts the faster cadence. **This entry was wrong and is reverted in v4.9.9:** it claimed the change cut each video quest's wall-clock in half, and it did not. Progress advances by real elapsed time, so the quest takes the same number of seconds either way and the shorter interval only doubled the request count.
+- **Two parallel video quests** &mdash; Video concurrency raised from 1 to 2. Two video quests complete simultaneously instead of serially.
+- **Fix `TypeError: Cannot read properties of null` on gear-icon click** &mdash; The options gear stays mounted in the header after the picker closes, but its panel doesn't. Added a null guard so post-picker clicks no longer throw.
+
+### v4.7
+- **Collapse-on-double-click + drag boundaries** &mdash; Double-click the header to minimize the panel to a 50px stub; double-click again to expand. The dashboard can no longer be dragged outside the viewport on either axis. Picker options panel hidden behind a new gear icon (`⚙️`) for a cleaner first-paint. Thanks to @TirOFlanc in #32.
+- **Skip manual activities** &mdash; New picker toggle. When ACHIEVEMENT_IN_ACTIVITY quests fall back to passive mode (waiting for you to actually play the activity), the script now optionally fail-fast skips them so the queue keeps moving instead of blocking a slot for 25 minutes. Default off. Resolves #33.
+- **Random 1-30min delay between cycles** &mdash; New picker toggle. Injects a randomized idle gap between quest cycles for anti-detection during long AFK runs. Default off (preserves current behavior). Implements the request in #30.
+- **Dashboard persists when rewards are unclaimed** &mdash; The widget no longer auto-shuts down the moment the last quest completes if any task still has a CLAIM button waiting. Click STOP manually after claiming. Resolves #31.
+
+### v4.6.3
+- **Fix CSP violation in credit text** &mdash; The header's `by syntt_` was an `<a>` with inline `onmouseover` / `onmouseout` handlers. Discord enforces strict CSP and rejected the inline handlers with a console error; the link itself also redirected to `/@me` (Discord's URL scheme does not open user profiles via `discord.com/users/<id>`). Replaced with a plain `<span class="dev-credit">` and moved styling into the stylesheet. Resolves #29.
+
+### v4.6.2
+- **Native UI overhaul** &mdash; Replaced hardcoded hex colors with Discord's native CSS variables. The widget now automatically adapts to Light, Dark, AMOLED, and custom themes.
+- **Circular progress & decluttering** &mdash; Switched linear progress bars to circular indicators (hover to see exact percentages). Completed quests now hide unnecessary text to keep the interface clean.
+- **Desktop environment guard** &mdash; The script now checks for `window.DiscordNative`. Game and Stream quests are automatically hidden and skipped if you run the script in a web browser.
+- **Removed window position saving** &mdash; Dropped `localStorage` usage for tracking the widget's coordinates to fix console spam and `window.localStorage is undefined` errors on newer Discord builds where storage access is restricted.
+- **Optimistic UI & under-the-hood fixes** &mdash; Added a local ticker for smooth visual progress updates.
+
+### v4.6.1
+- **Louder completion sound** &mdash; Bumped the gain on the quest-completion ping (0.12 &rarr; 0.45) and arpeggio (0.18 &rarr; 0.55). Headphone users were complaining the tone was inaudible.
+
+### v4.6
+- **Vencord integration** &mdash; `loadModules` now uses `window.Vencord.Webpack` directly when Vencord is installed. Restores full functionality on modern Discord Stable, where the native chunk push hook can no longer reach the live module cache. Resolves #20
+- **Sentry-proof native extraction** &mdash; The push callback fires once per registered runtime; Discord ships Sentry's stripped runtime alongside the real one. The capture now picks the require with the largest `.c`, ignoring Sentry's tiny instance. Resolves #23 and #26
+- **Sound on completion** &mdash; New picker toggle plays a soft tone after each quest finishes and a 3-note arpeggio when the whole queue is done. Useful with auto-claim off so you can come back before the captcha times out. Resolves #24
+
+### v4.5.5
+- **Hotfix Canary regression from v4.5.4** &mdash; first attempt at the dual-capture path. Superseded by v4.6's Sentry-proof solution.
+
+### v4.5.4 (broken on Canary &mdash; use v4.5.5+)
+- **Resilient `loadModules`** &mdash; `__webpack_require__` is now captured via the chunk callback closure instead of relying on `push()`'s return value. Some Discord builds return `undefined` from `push`; the callback always fires with the require argument
+- **CSS `:disabled` styling** &mdash; Claim button disabled/failed states are driven by `:disabled` and a `.failed` modifier class. No more inline-style assignments scattered across handler code
+- **Filter handler dedup** &mdash; The reward-filter and type-filter click handlers were near-identical; now collapsed into a single `FILTER_KINDS` table-driven path
+- **Icon resolution simplification** &mdash; 7-arm if/else chain in `Logger.render` replaced with a single ternary expression
+
+### v4.5.3
+- **Pending state** &mdash; Unenrolled quests now wait for manual acceptance in Discord instead of failing when auto-enroll is disabled.
+- **Ghost-task fix** &mdash; Unenrolled and hidden quests no longer attempt execution or time out in the background.
+- **Claim button lock** &mdash; Prevented API spam and visual state resets by locking the "Claim Reward" button during UI renders.
+- **Picker refactor** &mdash; Moved UI logic inside `Logger` and switched to native HTML forms for resilient state collection.
+- **Dynamic filters** &mdash; Added Quest Type filtering.
+
+### v4.5.2
+- **Fix NodeList error** &mdash; `$$` now returns a real Array so `.every()` works on visible quest cards. Resolves `TypeError: visible.every is not a function` when clicking (De)select All
+
+### v4.5.1
+- **Fix (De)select All** &mdash; The toggle button now correctly checks/unchecks visible quest checkboxes without hiding them. Reward filters remain independent. Button label syncs with actual checkbox state
+
+### v4.5
+- **Quest picker UI** &mdash; Script no longer starts immediately. A visual quest picker shows all available quests with checkboxes, color-coded by reward type (Orbs, Avatar Decorations, In-Game Items). Filter entire reward categories with one click, select/deselect individual quests, then hit START
+- **Options panel** &mdash; Toggle auto-enroll and auto-claim directly from the picker UI before starting. No more editing CONFIG to control these behaviors
+- **Reward type filters** &mdash; Pill buttons at the top let you enable/disable entire reward categories. Disabling "Orbs" hides and unchecks all Orb quests instantly
+
+### v4.4
+- **JIT enrollment** &mdash; Quests enroll one at a time right before execution instead of in bulk, eliminating mass-enrollment detection vectors
+- **Natural video polling** &mdash; Replaced static 1s intervals with 7&ndash;9.5s polling using 6-decimal float timestamps that match native Chromium player behavior
+- **Randomized delays** &mdash; All fixed-interval API calls now use randomized timing ranges to break predictable patterns
+- **Correct Windows PIDs** &mdash; Fake game process IDs generated as multiples of 4 to comply with Windows NT kernel architecture
+- **Sequential execution** &mdash; Both game and video tasks now run sequentially (concurrency&nbsp;=&nbsp;1) to avoid parallel request spikes
+- **Proper cleanup** &mdash; Removes `#audisk-styles` element on shutdown, debug logging for previously silent catch blocks
+
+### v4.3
+- **GO TO QUESTS button** &mdash; Achievement quests in `RUNNING` state now show an `ACTION REQUIRED` status with a navigation button that uses Discord's native router (`transitionTo('/quest-home')`) to jump straight to the quest page
+- **Resilient router detection** &mdash; New `findRouter()` locates Discord's minified `transitionTo` by source signature (`"transitionTo -"`), no hardcoded paths
+- **Standardized log tags** &mdash; Unified prefixes across the codebase (`[System]`, `[Network]`, `[Task]`, `[Cycle]`, `[Enroll]`, `[Claim]`) for consistent, readable output
+- **Cleaner UI logs** &mdash; `debug` level messages now go to DevTools only and no longer spam the in-app dashboard
+- **Achievement progress display** &mdash; Progress text now omits the `s` (seconds) suffix for `ACHIEVEMENT` quests since their target is a count, not a duration
+- **Fixed progress text updates** &mdash; Restored missing `progress-text` class so live progress numbers update correctly on task cards
+
+### v4.2
+- **Native UI Claiming:** Added in-UI claiming via Claim Reward button.
+- **Rigid Configuration:** Moved hardcoded system limits to a frozen `SYS` object and added `TRY_TO_CLAIM_REWARD` config.
+- **Fault-Tolerant Concurrency:** Switched to `Promise.allSettled` to prevent queue crashes on a single task failure.
+- **Strict Garbage Collection:** Added `RUNTIME.cleanups` to track and safely flush active event listeners on script stop.
+- **RPC & Lock Failsafes:** Forces dummy PID `9999` to reliably clear "Playing" status, and releases `window.audiskLock` on fatal errors.
+- **Granular Rate Limiting:** Differentiates between global (queue-freezing) and endpoint-specific API limits.
+
+### v4.1
+- Resilient `loadModules()` &mdash; uses `constructor.displayName` instead of hardcoded `.A/.Z/.Ay/.ZP` paths
+- Auto-claim rewards (optimistic POST + captcha fallback with CLAIM button)
+- Adaptive video speed (6-22 API calls instead of 180 for 900s quests)
+- `ACHIEVEMENT_IN_ACTIVITY` handler for milestone-based quests
+- `WATCH_VIDEO_ON_MOBILE` progress tracking fix
+- Task sorting by progress percentage
+- Per-cycle try-catch for crash isolation
+- Fixed scroll (After activating the script, it turned blue when hovered)
+
+### v4.0
+- Fixed Issue #5: enrollment 404 no longer crashes the script
+- ErrorHandler module with retry/skip/fatal classification
+- Traffic queue with exponential backoff for 5xx errors
+- Skip-list for permanently failed quests
+- Idempotent cleanup in GAME/STREAM handlers
+
+---
+
+## Disclaimer
+
+This tool is for **educational and research purposes only**. Automating user actions violates Discord's [Terms of Service](https://discord.com/terms). The developer is not responsible for any account suspensions or bans. Use at your own risk.
+
+---
+
+<div align="center">
+
+Built by **Kiraa** - Discord: [**akiyamakira2003**](https://discord.com/users/581419585249607710)
+
+If this helped you, drop a star &mdash; it keeps the project alive.
+
+</div>
+
+---
 
 ## Legal
 
