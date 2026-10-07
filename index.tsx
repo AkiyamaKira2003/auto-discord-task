@@ -44,7 +44,7 @@ import { settings } from "./settings";
  * not say which build it came from and neither could the person triaging it (issue #66).
  * tools/package-release.ps1 refuses to package if this and the userscript disagree.
  */
-export const PLUGIN_VERSION = "v4.11.4";
+export const PLUGIN_VERSION = "v4.11.5";
 
 
 /*
@@ -268,6 +268,7 @@ async function ensureReadyStop(): Promise<string> {
 async function statusSummary(): Promise<string> {
     const running = isEngineRunning();
     const entries = readDashboard();
+    const mode = settings.store.orbQuestsOnly ? "Mode: Orb quests only.\n" : "";
     // A status with no tasks can still report the balance, and asking while nothing runs is the
     // plain way to check it, so the early returns carry the line too.
     if (!running && entries.length === 0) {
@@ -275,9 +276,9 @@ async function statusSummary(): Promise<string> {
         const idle = outcome
             ? `Audisk ${PLUGIN_VERSION} idle: ${outcome}\nUse \`/audisk start\` to try again.`
             : `Audisk ${PLUGIN_VERSION} idle. Use \`/audisk start\` to begin.`;
-        return `${idle}\n${await balanceLine()}`;
+        return `${idle}\n${mode}${await balanceLine()}`;
     }
-    if (entries.length === 0) return `${running ? "Running. No active tasks yet." : "Idle."}\n${await balanceLine()}`;
+    if (entries.length === 0) return `${running ? "Running. No active tasks yet." : "Idle."}\n${mode}${await balanceLine()}`;
 
     const tally = new Map<string, number>();
     for (const e of entries) tally.set(e.status, (tally.get(e.status) ?? 0) + 1);
@@ -338,7 +339,8 @@ async function statusSummary(): Promise<string> {
     const orbLine = orbTotal
         ? [`Orbs: ${formatOrbReward(orbTotal, boosted)} across these task(s)${orbsWaiting ? `, ${formatOrbReward(orbsWaiting, boosted)} of it still to claim` : ""}.`]
         : [];
-    return [header, ...lines, ...orbLine, await balanceLine(), ...footer].join("\n");
+    const modeLine = settings.store.orbQuestsOnly ? ["Mode: Orb quests only."] : [];
+    return [header, ...modeLine, ...lines, ...orbLine, await balanceLine(), ...footer].join("\n");
 }
 
 // The balance may need a request, unlike everything else in a status, so a failed read prints

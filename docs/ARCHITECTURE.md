@@ -1,6 +1,6 @@
 # Audisk architecture
 
-Version: v4.11.4
+Version: v4.11.5
 
 This document describes the current Audisk runtime rather than the historical project layout.
 
@@ -32,6 +32,13 @@ Important invariants:
 - a transient missing user ID is treated as an observation gap, not proof of account change
 - task cleanup is generation-aware
 - stopped or replaced tasks cannot publish progress into a newer run
+- Orb-only filtering is revocable and therefore never enters the permanent skipped set
+
+### Orb-only selection
+
+The plugin setting Orb quests only is evaluated on every scan before enrollment or task creation. A quest counts as an Orb quest when any reward entry has a positive orbQuantity; the first reward is not authoritative because Discord can list an in-game item ahead of its Orb payout.
+
+Filtered quests receive a left_out run outcome instead of blocked or failed. That distinction matters for both UX and lifecycle: a run containing only filtered quests must not claim that everything was completed or play the completion sound, and turning the setting off must make those quests eligible again. Already queued/running task generations are not cancelled when the setting changes.
 
 ## 4. Task execution
 

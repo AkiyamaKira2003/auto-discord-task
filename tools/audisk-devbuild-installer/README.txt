@@ -2,7 +2,7 @@ AUDISK BY KIRAA - VEN CORD AUTO-UPDATE INSTALLER
 ==================================================
 
 Owner / maintainer: Kiraa (AkiyamaKira2003)
-Version: v4.11.4
+Version: v4.11.5
 Project: https://github.com/AkiyamaKira2003/auto-discord-task
 Plugin name: Audisk
 Plugin folder: src\userplugins\audisk

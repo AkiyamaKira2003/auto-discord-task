@@ -5,7 +5,7 @@
 
     const CONFIG = {
         NAME: "Audisk",
-        VERSION: "v4.11.4",
+        VERSION: "v4.11.5",
         THEME: "#5865F2",             // discord blurple
         SUCCESS: "#3BA55C",
         WARN: "#faa61a",
@@ -953,8 +953,13 @@
                     // exclude desktop-only quests (play/stream) on any non-desktop clients
                     if (!SYS.IS_DESKTOP && (typeData.type === 'GAME' || typeData.type === 'STREAM')) return;
 
-                    const rw = q.config?.rewardsConfig?.rewards?.[0];
-                    const rewardType = rw?.type ?? 0;
+                    const rewards = q.config?.rewardsConfig?.rewards;
+                    const rw = rewards?.[0];
+                    const orbs = orbReward(q.config);
+                    // A quest can list an in-game item before its Orb reward. Classify it as
+                    // ORBS whenever any reward entry actually pays Orbs, so the picker filter
+                    // agrees with the payout calculation and the plugin's Orb-only setting.
+                    const rewardType = orbs ? 4 : (rw?.type ?? 0);
                     const rewardText = rw?.messages?.name ?? "Unknown Reward";
 
                     const meta = REWARD_META[rewardType] ?? REWARD_FALLBACK;
@@ -966,8 +971,6 @@
                         rewardTypes.set(rewardType, { label: meta.label, count: 0, type: rewardType, color: meta.color });
                     }
                     rewardTypes.get(rewardType).count++;
-
-                    const orbs = orbReward(q.config);
 
                     items.push({
                         id: q.id,

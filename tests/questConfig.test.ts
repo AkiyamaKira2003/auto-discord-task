@@ -155,6 +155,24 @@ test("a run that farmed one quest and skipped another reports both and keeps the
     assert.match(summary.line, /1 skipped because this client cannot drive them/);
 });
 
+test("Orb-only left-outs are reported separately and do not play the done sound by themselves", () => {
+    const summary = summarizeRun(outcomesOf(["q1", "left_out"], ["q2", "left_out"]));
+
+    assert.equal(summary.leftOut, 2);
+    assert.equal(summary.finished, 0);
+    assert.equal(summary.playDone, false);
+    assert.match(summary.line, /2 left out because they pay no Orbs/);
+    assert.doesNotMatch(summary.line, /All available quests are completed/);
+});
+
+test("a later real outcome replaces a revocable Orb-only left-out", () => {
+    const outcomes = outcomesOf(["q1", "left_out"], ["q1", "completed"]);
+    const summary = summarizeRun(outcomes);
+
+    assert.equal(summary.finished, 1);
+    assert.equal(summary.leftOut, 0);
+});
+
 test("a run with nothing to report keeps the original completion line", () => {
     const summary = summarizeRun(outcomesOf());
 

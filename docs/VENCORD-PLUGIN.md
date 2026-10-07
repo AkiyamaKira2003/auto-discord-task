@@ -1,6 +1,6 @@
 # Audisk Vencord plugin
 
-Version: v4.11.4
+Version: v4.11.5
 
 Audisk is a Vencord userplugin for Discord Quest automation maintained by **Kiraa / AkiyamaKira2003**.
 
@@ -42,7 +42,9 @@ The footer has a Discord-colored button with the Discord icon and `akiyamakira20
 
 ## Settings
 
-The plugin exposes settings for auto start, auto enroll, watching for enrollments, achievement bypass consent, reward claim attempts, hidden activity, game-session tail, concurrency, sounds and verbose logging.
+The plugin exposes settings for auto start, auto enroll, Orb-only runs, watching for enrollments, achievement bypass consent, reward claim attempts, hidden activity, game-session tail, concurrency, sounds and verbose logging.
+
+Orb quests only is off by default. When enabled, a quest is eligible only when at least one entry in rewardsConfig.rewards carries a positive Orb payout. Non-Orb quests are not enrolled or started and are reported as left out rather than failed. The filter is intentionally revocable: it does not add quests to the permanent skipped set, so turning the setting off returns them to the next scan. Work already queued or running when the setting is enabled is allowed to finish normally.
 
 `watchForEnrollments` is owned by the plugin lifecycle rather than the engine run. It stays armed after a natural queue drain when enabled, but `/audisk stop` disarms it until the next start.
 
@@ -72,6 +74,7 @@ A valid production build should satisfy all of the following:
 - generated `dist/renderer.js` contains `Audisk`
 - dashboard mounts without a second engine
 - `/audisk status` responds
+- enabling Orb quests only leaves non-Orb quests unenrolled and unstarted
 - profile button opens user ID `581419585249607710`
 - disabling the plugin removes watchers, patches and dashboard elements
 

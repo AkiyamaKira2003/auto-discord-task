@@ -18,7 +18,7 @@ import { COMPANION_EVENT_CODES, companionFailure, emitCompanionEvent } from "./c
 import { setAchievementBypassHook } from "./hooks";
 import { Patcher } from "./patcher";
 import { questBlocker, recordOutcome, selectQuestTaskConfig, summarizeRun, taskEntries } from "./questConfig";
-import { orbBalance } from "./questRewards";
+import { orbBalance, questPaysOrbs } from "./questRewards";
 import { type SchedulerLane, schedulerLaneForTaskType, schedulerMetadata, type SchedulerSnapshot, type SchedulerTaskView } from "./schedulerMetadata";
 import { settings } from "./settings";
 import { TaskControlRegistry, type TaskLifecycle } from "./taskControl";
@@ -775,8 +775,34 @@ async function mainLoop(
             }
 
             const all = getQuestsArray(runStores.QuestStore);
-            const active = runTasks.activeQuests(all);
-            const activeIds = new Set(active.map(q => q.id));
+            const allActive = runTasks.activeQuests(all);
+            const activeIds = new Set(allActive.map(q => q.id));
+            const active: Quest[] = [];
+            const orbOnly = settings.store.orbQuestsOnly === true;
+
+            for (const q of allActive) {
+                // Do not tear down work already accepted by the scheduler when Orb-only is
+                // enabled mid-run. New work is filtered, existing work is allowed to settle.
+                // This filter never enters the permanent skipped set, so turning it off makes
+                // a left-out quest eligible again on the next scan.
+                const alreadyScheduled = !!taskControls.get(q.id)
+                    || dashboard.get(q.id)?.status === "RUNNING"
+                    || dashboard.get(q.id)?.status === "QUEUE";
+                if (orbOnly && !alreadyScheduled && !questPaysOrbs(q.config)) {
+                    if (runRuntime.outcomes.get(q.id) !== "left_out") {
+                        const name = q.config?.messages?.questName ?? q.id;
+                        logger.info(`[Quest] Leaving "${name}" out because Orb quests only is enabled and it pays no Orbs.`);
+                    }
+                    recordOutcome(runRuntime.outcomes, q.id, "left_out");
+                    if (dashboard.get(q.id)?.status === "PENDING") removeEntry(q.id);
+                    continue;
+                }
+
+                if (runRuntime.outcomes.get(q.id) === "left_out") {
+                    runRuntime.outcomes.delete(q.id);
+                }
+                active.push(q);
+            }
 
             for (const id of taskControls.prunePaused(activeIds)) {
                 if (dashboard.get(id)?.status === "PAUSED") removeEntry(id);
@@ -816,9 +842,10 @@ async function mainLoop(
                     level: summary.failed > 0 ? "warning" : "info",
                     message: summary.line,
                 });
-                if (summary.blocked || summary.failed) {
+                if (summary.blocked || summary.failed || summary.leftOut) {
                     const parts: string[] = [];
                     if (summary.finished) parts.push(`${summary.finished} quest(s) finished`);
+                    if (summary.leftOut) parts.push(`${summary.leftOut} were left out because they pay no Orbs`);
                     if (summary.blocked) parts.push(`${summary.blocked} were skipped because this client cannot drive them`);
                     if (summary.failed) parts.push(`${summary.failed} failed`);
                     lastRunOutcome = `${parts.join(", ")}.`;

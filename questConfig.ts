@@ -199,22 +199,24 @@ export function recordOutcome(outcomes: Map<string, QuestOutcome>, id: string, o
  * gained completedAt fixes both that and the quest counted as finished and skipped at once.
  */
 export function summarizeRun(outcomes: Map<string, QuestOutcome>): RunSummary {
-    let finished = 0, blocked = 0, failed = 0;
+    let finished = 0, blocked = 0, failed = 0, leftOut = 0;
     for (const outcome of outcomes.values()) {
         if (outcome === "completed") finished++;
         else if (outcome === "blocked") blocked++;
-        else failed++;
+        else if (outcome === "failed") failed++;
+        else leftOut++;
     }
 
-    if (!blocked && !failed) {
-        return { finished, blocked, failed, line: "All available quests are completed!", playDone: true };
+    if (!blocked && !failed && !leftOut) {
+        return { finished, blocked, failed, leftOut, line: "All available quests are completed!", playDone: true };
     }
 
     const parts: string[] = [];
     if (finished) parts.push(`${finished} quest(s) finished`);
+    if (leftOut) parts.push(`${leftOut} left out because they pay no Orbs`);
     if (blocked) parts.push(`${blocked} skipped because this client cannot drive them`);
     if (failed) parts.push(`${failed} failed`);
-    return { finished, blocked, failed, line: `Nothing left to run. ${parts.join(", ")}.`, playDone: finished > 0 };
+    return { finished, blocked, failed, leftOut, line: `Nothing left to run. ${parts.join(", ")}.`, playDone: finished > 0 };
 }
 
 /**

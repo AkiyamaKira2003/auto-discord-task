@@ -27,6 +27,13 @@ export const settings = definePluginSettings({
         default: true,
     },
 
+    orbQuestsOnly: {
+        type: OptionType.BOOLEAN,
+        description:
+            "Run only quests that pay Orbs. Quests with no Orb payout are left untouched: Audisk will not enroll or start them, and they are reported as left out rather than failed. Off by default. A task that is already queued/running is allowed to finish, and turning this off puts previously left-out quests back into rotation on the next cycle.",
+        default: false,
+    },
+
     watchForEnrollments: {
         type: OptionType.BOOLEAN,
         description:

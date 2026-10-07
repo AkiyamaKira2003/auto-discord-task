@@ -1,10 +1,10 @@
 # Audisk
 
-[![Version](https://img.shields.io/badge/v4.11.4-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://github.com/AkiyamaKira2003/auto-discord-task/releases/latest)
+[![Version](https://img.shields.io/badge/v4.11.5-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://github.com/AkiyamaKira2003/auto-discord-task/releases/latest)
 [![Stars](https://img.shields.io/github/stars/AkiyamaKira2003/auto-discord-task?style=for-the-badge&color=faa61a)](https://github.com/AkiyamaKira2003/auto-discord-task/stargazers)
 [![License](https://img.shields.io/badge/MIT-green?style=for-the-badge)](LICENSE)
 
-Version: v4.11.4
+Version: v4.11.5
 
 Completes Discord Quests without playing them. It reads the quests you're eligible for, tells Discord you're doing the thing the quest asks for, and waits for Discord to credit the progress.
 
@@ -125,7 +125,7 @@ const CONFIG = {
 };
 ```
 
-The plugin has the same options as real settings, plus auto-start, per-type concurrency, and the achievement bypass toggle. They're documented in [`docs/VENCORD-PLUGIN.md`](docs/VENCORD-PLUGIN.md).
+The plugin has the same options as real settings, plus auto-start, **Orb quests only**, per-type concurrency, and the achievement bypass toggle. Orb quests only is off by default; when enabled, quests with no Orb payout are not enrolled or started, and switching it off returns them to the next scan. They're documented in [`docs/VENCORD-PLUGIN.md`](docs/VENCORD-PLUGIN.md).
 
 ## When things go wrong
 
@@ -181,6 +181,11 @@ Bug reports, PRs and docs all welcome. [`CONTRIBUTING.md`](CONTRIBUTING.md) has 
 ---
 
 ## Changelog
+
+### v4.11.5
+- **Orb quests only for the Vencord plugin.** A new off-by-default setting runs only quests that actually pay Orbs. Audisk checks every reward entry, not only the first one; non-Orb quests are left unenrolled and unstarted, and the run summary reports them as `left out because they pay no Orbs` instead of failures. The filter is revocable, so turning it off mid-run puts those quests back into rotation on the next scan. Work already queued/running is allowed to finish.
+- **The userscript ORBS filter now agrees with the payout calculation.** A quest whose first reward is an in-game item but a later reward pays Orbs is classified under ORBS, so it no longer disappears when the ORBS reward filter is selected.
+- **Regression coverage.** Orb classification now has a multi-reward test, and run-summary tests verify that Orb-only left-outs do not produce a false `All available quests are completed!` message or completion sound.
 
 
 ### v4.11.4

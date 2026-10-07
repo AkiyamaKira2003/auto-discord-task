@@ -92,13 +92,14 @@ export interface FakeGame {
 }
 
 /** Terminal outcome of one quest in one run. */
-export type QuestOutcome = "completed" | "blocked" | "failed";
+export type QuestOutcome = "completed" | "blocked" | "failed" | "left_out";
 
 /** Counts and wrap-up wording for a run with nothing left to do. */
 export interface RunSummary {
     finished: number;
     blocked: number;
     failed: number;
+    leftOut: number;
     line: string;
     playDone: boolean;
 }

@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { formatOrbBalance, formatOrbReward, orbBalance, questOrbReward, totalOrbReward } from "../questRewards";
+import { formatOrbBalance, formatOrbReward, orbBalance, questOrbReward, questPaysOrbs, totalOrbReward } from "../questRewards";
 
 const orbQuest = (rewards: any[]) => ({ rewardsConfig: { rewards } });
 
@@ -40,6 +40,17 @@ test("a quest that pays no Orbs reports none", () => {
     assert.equal(questOrbReward(orbQuest([])), null);
     assert.equal(questOrbReward({}), null);
     assert.equal(questOrbReward(undefined), null);
+});
+
+test("Orb-only classification checks every reward entry, not only the first", () => {
+    assert.equal(questPaysOrbs(orbQuest([
+        { type: 1, messages: { name: "In-game item" } },
+        { type: 4, orbQuantity: 200 },
+    ])), true);
+    assert.equal(questPaysOrbs(orbQuest([
+        { type: 1, messages: { name: "In-game item" } },
+        { type: 3, messages: { name: "Avatar decoration" } },
+    ])), false);
 });
 
 test("junk quantities are ignored rather than printed", () => {

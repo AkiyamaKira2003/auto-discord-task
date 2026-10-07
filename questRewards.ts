@@ -47,6 +47,11 @@ export function questOrbReward(config: any): OrbReward | null {
     return orbs > 0 ? { orbs, premiumOrbs } : null;
 }
 
+/** True when any reward entry contributes a positive Orb payout. */
+export function questPaysOrbs(config: any): boolean {
+    return questOrbReward(config) !== null;
+}
+
 /** Sum of several quests' payouts, or null when none of them pay Orbs. */
 export function totalOrbReward(rewards: Array<OrbReward | null>): OrbReward | null {
     let orbs = 0;
