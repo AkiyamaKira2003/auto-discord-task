@@ -27,9 +27,16 @@ function Step([string]$what, [scriptblock]$run) {
 $Common = Join-Path $PSScriptRoot 'installer-common.ps1'
 if (-not (Test-Path -LiteralPath $Common -PathType Leaf)) { Fail 'installer-common.ps1 is missing. Re-download/extract the full installer zip.' }
 . $Common
+$BootstrapTools = Join-Path $PSScriptRoot 'bootstrap-tools.ps1'
+if (-not (Test-Path -LiteralPath $BootstrapTools -PathType Leaf)) { Fail 'bootstrap-tools.ps1 is missing. Re-download/extract the full installer zip.' }
+. $BootstrapTools
 
 if (-not (Test-Path (Join-Path $InstallDir '.git'))) { Fail "No AudiskVencord install found at $InstallDir. Run INSTALL.cmd first." }
 if (-not (Test-Path $PluginSrc)) { Fail 'plugin source folder not found next to this script. Extract the whole zip.' }
+
+try { $preparedTools = Ensure-AudiskBuildTools }
+catch { Fail "Could not prepare build tools automatically: $($_.Exception.Message)" }
+Good "Build tools ready: $($preparedTools.Node), $($preparedTools.Git)"
 
 Info 'Updating Vencord source...'
 $global:LASTEXITCODE = 0; $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'

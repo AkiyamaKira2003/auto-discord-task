@@ -10,6 +10,7 @@ $Workflow = Join-Path $RepoRoot '.github\workflows\installer.yml'
 $Packager = Join-Path $RepoRoot 'tools\package-release.ps1'
 $RuntimeUninstall = Join-Path $DevbuildDir 'uninstall-runtime.ps1'
 $RuntimeUninstallLauncher = Join-Path $DevbuildDir 'uninstall-runtime.cmd'
+$BootstrapTools = Join-Path $DevbuildDir 'bootstrap-tools.ps1'
 $RootInstallCmd = Join-Path $RepoRoot 'INSTALL.cmd'
 $RootInstall = Join-Path $RepoRoot 'install.ps1'
 $MenuInstallCmd = Join-Path $DevbuildDir 'INSTALL.cmd'
@@ -40,6 +41,7 @@ function Assert-Throws([scriptblock]$Action, [string]$Message) {
 Assert-True (Test-Path $Helper) 'installer-common.ps1 is required so install/update/uninstall share one tested Discord/toolchain implementation.'
 Assert-True (Test-Path $RuntimeUninstall) 'The dashboard uninstall runtime helper must ship with the devbuild installer.'
 Assert-True (Test-Path $RuntimeUninstallLauncher) 'The dashboard uninstall launcher must ship with the devbuild installer.'
+Assert-True (Test-Path $BootstrapTools) 'The portable Node/Git bootstrap helper must ship with the devbuild installer.'
 Assert-True (Test-Path $RootInstallCmd) 'INSTALL.cmd must be the canonical repository installer entrypoint.'
 Assert-True (Test-Path $RootInstall) 'Root install.ps1 must delegate to the canonical 1/2/3 installer menu.'
 Assert-True (Test-Path $MenuInstallCmd) 'The packaged devbuild installer must expose INSTALL.cmd.'
@@ -379,6 +381,7 @@ $workflowText = Get-Content $Workflow -Raw
 $packagerText = Get-Content $Packager -Raw
 $runtimeUninstallText = Get-Content $RuntimeUninstall -Raw
 $runtimeUninstallLauncherText = Get-Content $RuntimeUninstallLauncher -Raw
+$bootstrapToolsText = Get-Content $BootstrapTools -Raw
 $rootInstallCmdText = Get-Content $RootInstallCmd -Raw
 $rootInstallText = Get-Content $RootInstall -Raw
 $menuInstallCmdText = Get-Content $MenuInstallCmd -Raw
@@ -448,9 +451,15 @@ Assert-True ($install -match 'hadVencordBefore') 'Install must record whether Ve
 Assert-True ($install -match '\.audisk-install-state\.json') 'Install must persist the original-client state for dashboard uninstall.'
 Assert-True ($install -match 'uninstall-runtime\.ps1') 'Install must deploy the dashboard uninstall helper.'
 Assert-True ($runtimeUninstallText -match 'Test-SnapshotPatcherExists') 'Dashboard uninstall must verify a saved pre-Audisk Vencord target still exists before restoring it.'
-Assert-True ($runtimeUninstallText -match 'corepack pnpm build') 'Keeping Vencord on a clean-machine install must rebuild plain Vencord after removing Audisk.'
+Assert-True ($runtimeUninstallText -match 'Invoke-AudiskPortablePnpm') 'Keeping Vencord on a clean-machine install must rebuild plain Vencord through the portable Node/pnpm bootstrap.'
 Assert-True ($runtimeUninstallText -match 'Restore-OfficialDiscord') 'Removing Vencord too must restore the official Discord client.'
 Assert-True ($runtimeUninstallLauncherText -match 'audisk-uninstall-request\.json') 'The dashboard launcher must consume the confirmed uninstall options written by the native helper.'
+Assert-True ($install -match 'Ensure-AudiskBuildTools') 'Install must automatically prepare Node.js and Git before cloning/building Vencord.'
+Assert-False ($install -match '\bwinget\b') 'Install must not require winget, admin rights, or a reboot to prepare build tools.'
+Assert-True ($update -match 'Ensure-AudiskBuildTools') 'UPDATE must restore the same portable build-tool PATH on later runs.'
+Assert-True ($bootstrapToolsText -match 'nodejs\.org/dist/index\.json') 'Bootstrap must discover a supported Node.js LTS release from nodejs.org.'
+Assert-True ($bootstrapToolsText -match 'git-for-windows/git/releases/latest') 'Bootstrap must discover a portable MinGit release from Git for Windows.'
+Assert-True ($bootstrapToolsText -match 'AudiskBootstrap') 'Portable build tools must live under the AudiskBootstrap root instead of requiring system-wide installation.'
 Assert-True ($update -match '\$fetchCode') 'Plugin update fallback must record git fetch success explicitly.'
 Assert-True ($update -match '\$resetCode') 'Plugin update fallback must record git reset success explicitly.'
 Assert-True ($update -match '\$fetchCode\s*-eq\s*0\s*-and\s*\$resetCode\s*-eq\s*0') 'A stale FETCH_HEAD reset must not be reported as a successful plugin update.'

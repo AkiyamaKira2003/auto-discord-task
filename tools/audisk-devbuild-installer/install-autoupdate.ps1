@@ -6,7 +6,7 @@
   install is a git checkout, Vencord's own updater keeps working: it git-pulls and
   rebuilds, and the plugin is recompiled back in every time.
 
-  Flow: preflight Discord -> ensure Node 22+ and Git (winget if missing) -> clone/pull
+  Flow: preflight Discord -> self-bootstrap Node 22+ and Git -> clone/pull
   Vencord into %LOCALAPPDATA%\AudiskVencord -> drop the plugin -> pnpm install ->
   transactional build -> verify -> patch the selected Discord flavor. Build happens
   BEFORE inject. Pass -SkipInject to do everything except patch Discord.
@@ -33,6 +33,8 @@ $RuntimeUninstallerSource = Join-Path $PSScriptRoot 'uninstall-runtime.ps1'
 $RuntimeUninstallerDest = Join-Path $InstallDir '.audisk-uninstall.ps1'
 $RuntimeUninstallerLauncherSource = Join-Path $PSScriptRoot 'uninstall-runtime.cmd'
 $RuntimeUninstallerLauncherDest = Join-Path $InstallDir '.audisk-uninstall.cmd'
+$BootstrapToolsSource = Join-Path $PSScriptRoot 'bootstrap-tools.ps1'
+$BootstrapToolsDest = Join-Path $InstallDir '.audisk-bootstrap-tools.ps1'
 $pendingInstallState = $null
 $pendingPreviousAsar = $null
 
@@ -59,7 +61,6 @@ function Warn($m) { Write-Host $m -ForegroundColor Yellow }
 function Pause2($m) { try { Read-Host $m } catch {} }
 function Fail($m) { Write-Host ''; Write-Host "  ERROR: $m" -ForegroundColor Red; Write-Host ''; Pause2 'Press Enter to exit'; exit 1 }
 function Have($c) { $null -ne (Get-Command $c -ErrorAction SilentlyContinue) }
-function RefreshPath { $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User') }
 
 $Common = Join-Path $PSScriptRoot 'installer-common.ps1'
 if (-not (Test-Path -LiteralPath $Common -PathType Leaf)) { Fail 'installer-common.ps1 is missing. Extract the whole zip and keep the files together.' }
@@ -71,18 +72,6 @@ function Step([string]$what, [scriptblock]$run) {
     $ErrorActionPreference = 'Continue'
     try { & $run } finally { $ErrorActionPreference = $prev }
     if ($LASTEXITCODE -ne 0) { Fail "$what failed (exit code $LASTEXITCODE). See the output above." }
-}
-
-function EnsureTool([string]$cmd, [string]$wingetId, [string]$name, [string]$url) {
-    if (Have $cmd) { return }
-    if (Have winget) {
-        Warn "  $name not found - installing via winget (a 'Do you want to allow changes?' box may pop up - click Yes)..."
-        $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-        winget install -e --id $wingetId --accept-source-agreements --accept-package-agreements
-        $ErrorActionPreference = $prev
-        RefreshPath
-    }
-    if (-not (Have $cmd)) { Fail "$name is still not available. Install it from $url , then close this window and run the installer again. (If winget asked for a reboot, reboot first.)" }
 }
 
 function Choose-DiscordBranch {
@@ -159,22 +148,13 @@ if (-not $SkipInject) {
     }
 }
 
-Info '[1/6] Checking Node.js and Git...'
-EnsureTool 'node' 'OpenJS.NodeJS.LTS' 'Node.js' 'https://nodejs.org'
-EnsureTool 'git'  'Git.Git'           'Git'     'https://git-scm.com'
-$nodeMajor = 0; try { $nodeMajor = [int]((node -v).TrimStart('v').Split('.')[0]) } catch {}
-if ($nodeMajor -lt 22) {
-    if (Have winget) {
-        Warn "  Node $nodeMajor is too old (Vencord needs 22+). Upgrading via winget..."
-        $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-        winget install -e --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
-        $ErrorActionPreference = $prev
-        RefreshPath
-        try { $nodeMajor = [int]((node -v).TrimStart('v').Split('.')[0]) } catch {}
-    }
-    if ($nodeMajor -lt 22) { Fail "Node $nodeMajor is too old; Vencord needs Node 22 or newer. Get the latest from https://nodejs.org , then re-run." }
-}
-Good "  Node $(node -v), $(git --version)"
+if (-not (Test-Path -LiteralPath $BootstrapToolsSource -PathType Leaf)) { Fail 'bootstrap-tools.ps1 is missing. Extract the whole installer zip and keep the files together.' }
+. $BootstrapToolsSource
+Info '[1/6] Preparing Node.js and Git...'
+try { $preparedTools = Ensure-AudiskBuildTools }
+catch { Fail "Could not prepare build tools automatically: $($_.Exception.Message)" }
+Good "  $($preparedTools.Node), $($preparedTools.Git)"
+Good "  Build tools ready (portable fallback: $($preparedTools.BootstrapRoot))"
 
 Info "[2/6] Getting Vencord source into $InstallDir ..."
 if (Test-Path (Join-Path $InstallDir '.git')) {
@@ -202,6 +182,7 @@ if (-not (Test-Path -LiteralPath $RuntimeUninstallerLauncherSource -PathType Lea
 }
 Copy-Item -LiteralPath $RuntimeUninstallerSource -Destination $RuntimeUninstallerDest -Force
 Copy-Item -LiteralPath $RuntimeUninstallerLauncherSource -Destination $RuntimeUninstallerLauncherDest -Force
+Copy-Item -LiteralPath $BootstrapToolsSource -Destination $BootstrapToolsDest -Force
 
 if ($pendingInstallState -and -not (Test-Path -LiteralPath $InstallStatePath -PathType Leaf)) {
     if ($pendingPreviousAsar) {

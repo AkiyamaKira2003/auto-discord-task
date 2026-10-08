@@ -1,6 +1,6 @@
 # Audisk architecture
 
-Version: v4.11.7
+Version: v4.11.8
 
 This document describes the current Audisk runtime rather than the historical project layout.
 

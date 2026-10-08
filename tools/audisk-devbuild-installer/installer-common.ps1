@@ -762,12 +762,12 @@ function Get-PnpmInvocation {
     if ($spec -notmatch '^pnpm@([^+\s]+)') { throw "Vencord package.json has no supported pnpm packageManager entry (got '$spec')." }
     $version = $Matches[1]
 
-    if (Get-Command corepack -ErrorAction SilentlyContinue) {
-        return [pscustomobject]@{ Command = 'corepack'; Arguments = @('pnpm'); Version = $version }
-    }
-
     if (Get-Command npx -ErrorAction SilentlyContinue) {
         return [pscustomobject]@{ Command = 'npx'; Arguments = @('--yes', "pnpm@$version"); Version = $version }
+    }
+
+    if (Get-Command corepack -ErrorAction SilentlyContinue) {
+        return [pscustomobject]@{ Command = 'corepack'; Arguments = @('pnpm'); Version = $version }
     }
 
     throw 'Neither corepack nor npx is available. Reinstall a normal Node.js distribution and re-run.'

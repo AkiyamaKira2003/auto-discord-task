@@ -1,6 +1,6 @@
 # Audisk Vencord plugin
 
-Version: v4.11.7
+Version: v4.11.8
 
 Audisk is a Vencord userplugin for Discord Quest automation maintained by **Kiraa / AkiyamaKira2003**.
 
@@ -8,7 +8,7 @@ Repository: https://github.com/AkiyamaKira2003/auto-discord-task
 
 ## Install
 
-For the repository, double-click `INSTALL.cmd`. Choose `1` Stable, `2` Canary, or `3` PTB; multiple installed clients can be selected in one run with input such as `1 3`, `1,3`, or `1 2 3`. The installer builds Vencord with the local Audisk source under `src/userplugins/audisk` before patching each selected client.
+For the repository, double-click `INSTALL.cmd`. A clean machine does not need Node.js or Git preinstalled; the installer prepares portable copies automatically under `%LOCALAPPDATA%\AudiskBootstrap` when necessary. Choose `1` Stable, `2` Canary, or `3` PTB; multiple installed clients can be selected in one run with input such as `1 3`, `1,3`, or `1 2 3`. The installer builds Vencord with the local Audisk source under `src/userplugins/audisk` before patching each selected client.
 
 For a packaged installer, use `tools/audisk-devbuild-installer/INSTALL.cmd`; it uses the same 1/2/3 client menu and the same full backend.
 

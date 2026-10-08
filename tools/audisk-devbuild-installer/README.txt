@@ -2,7 +2,7 @@ AUDISK BY KIRAA - VEN CORD AUTO-UPDATE INSTALLER
 ==================================================
 
 Owner / maintainer: Kiraa (AkiyamaKira2003)
-Version: v4.11.7
+Version: v4.11.8
 Project: https://github.com/AkiyamaKira2003/auto-discord-task
 Plugin name: Audisk
 Plugin folder: src\userplugins\audisk
@@ -19,7 +19,7 @@ Packaged users run INSTALL.cmd and get the same 1/2/3 client selector.
 WHAT THE INSTALLER DOES
 -----------------------
 1. Selects the target Discord branch.
-2. Checks Node.js 22+ and Git.
+2. Prepares Node.js 22+ and Git automatically. Existing installs are reused; otherwise portable copies are downloaded into %LOCALAPPDATA%\AudiskBootstrap. No winget, administrator rights, or reboot is required.
 3. Clones or updates upstream Vencord.
 4. Installs Audisk under src\userplugins\audisk.
 5. Runs pnpm install.

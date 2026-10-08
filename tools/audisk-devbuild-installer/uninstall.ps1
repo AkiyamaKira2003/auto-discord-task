@@ -7,6 +7,7 @@
 #>
 $ErrorActionPreference = 'Continue'
 $InstallDir = Join-Path $env:LOCALAPPDATA 'AudiskVencord'
+$BootstrapRoot = Join-Path $env:LOCALAPPDATA 'AudiskBootstrap'
 
 $Common = Join-Path $PSScriptRoot 'installer-common.ps1'
 if (-not (Test-Path -LiteralPath $Common -PathType Leaf)) {
@@ -64,7 +65,8 @@ if ($failedReopen.Count -gt 0) {
 
 Write-Host ''
 Write-Host "You can now delete this folder if you want: $InstallDir" -ForegroundColor DarkGray
-Write-Host 'Node.js and Git stay installed. To remove them too (optional):' -ForegroundColor DarkGray
-Write-Host '  winget uninstall OpenJS.NodeJS.LTS   and   winget uninstall Git.Git' -ForegroundColor DarkGray
+if (Test-Path -LiteralPath $BootstrapRoot -PathType Container) {
+    Write-Host "Audisk's portable Node.js/Git cache can also be deleted: $BootstrapRoot" -ForegroundColor DarkGray
+}
 Write-Host ''
 try { Read-Host 'Press Enter to close' } catch {}

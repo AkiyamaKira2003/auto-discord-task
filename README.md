@@ -1,10 +1,10 @@
 # Audisk
 
-[![Version](https://img.shields.io/badge/v4.11.7-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://github.com/AkiyamaKira2003/auto-discord-task/releases/latest)
+[![Version](https://img.shields.io/badge/v4.11.8-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://github.com/AkiyamaKira2003/auto-discord-task/releases/latest)
 [![Stars](https://img.shields.io/github/stars/AkiyamaKira2003/auto-discord-task?style=for-the-badge&color=faa61a)](https://github.com/AkiyamaKira2003/auto-discord-task/stargazers)
 [![License](https://img.shields.io/badge/MIT-green?style=for-the-badge)](LICENSE)
 
-Version: v4.11.7
+Version: v4.11.8
 
 Completes Discord Quests without playing them. It reads the quests you're eligible for, tells Discord you're doing the thing the quest asks for, and waits for Discord to credit the progress.
 
@@ -36,7 +36,7 @@ The [latest release](https://github.com/AkiyamaKira2003/auto-discord-task/releas
 | `index.js` | The userscript. Paste into DevTools, no install. | Anyone comfortable opening the console. Needs Vencord on Discord Stable, see below. |
 | `audisk-relay-vX.zip` | A small localhost HTTP listener on `127.0.0.1:43210`. PowerShell and Python versions. | Only if you want achievement quests **and** you're using the userscript without the plugin. Explained under [Achievement quests](#achievement-quests). |
 | `audisk-vencord-bundle-vX.zip` | Copies a prebuilt Vencord over an existing Vencord install. `INSTALL.cmd`, no build tools. | Someone non-technical who already has Vencord and wants this working in one double-click. Freezes their Vencord version, see the note below. |
-| `audisk-devbuild-installer-vX.zip` | Builds Vencord from source with the plugin in it, as a real git clone. | Same person, but they want Vencord to keep auto-updating. Takes 5 to 15 minutes and downloads roughly 300 MB. Pulls Node 22 and Git via winget if missing. |
+| `audisk-devbuild-installer-vX.zip` | Builds Vencord from source with the plugin in it, as a real git clone. | Same person, but they want Vencord to keep auto-updating. Takes 5 to 15 minutes and downloads roughly 300 MB. No preinstalled Node.js or Git is required: Audisk downloads portable copies into `%LOCALAPPDATA%\AudiskBootstrap` when needed, with no admin/UAC or reboot requirement. |
 
 The two installers exist because copying a prebuilt Vencord over someone's install has to disable Vencord's updater to be safe. `audisk-vencord-bundle` accepts that and freezes the version. `audisk-devbuild-installer` avoids it by building from a git checkout, so Vencord updates itself normally and the plugin is recompiled back in each time. Both are Windows only and both include a README.
 
@@ -49,6 +49,8 @@ For a Windows install, clone or download this repository and run:
 ```text
 INSTALL.cmd
 ```
+
+`INSTALL.cmd` is self-contained: on a clean Windows machine you only need an installed Discord desktop client and internet access. Node.js 22+ and Git are discovered automatically or downloaded as portable Audisk-managed tools under `%LOCALAPPDATA%\AudiskBootstrap` before the build begins.
 
 `INSTALL.cmd` shows a 1/2/3 client menu for **Discord Stable / Canary / PTB**. Multi-select is supported: enter `1 3`, `1,3`, or `1 2 3` to install the same Audisk build into multiple installed Discord clients in one run. It then uses the repository itself as the plugin source. It prepares `%LOCALAPPDATA%\AudiskVencord`, installs the Audisk userplugin under `src\userplugins\audisk`, builds Vencord, verifies the generated renderer contains Audisk, patches the selected client, and reopens it.
 
@@ -181,6 +183,11 @@ Bug reports, PRs and docs all welcome. [`CONTRIBUTING.md`](CONTRIBUTING.md) has 
 ---
 
 ## Changelog
+
+### v4.11.8
+- **Self-contained clean-machine installer.** `INSTALL.cmd` no longer depends on winget or a preinstalled Node.js/Git toolchain. It reuses suitable existing tools when available; otherwise it downloads a portable Node.js LTS build and MinGit into `%LOCALAPPDATA%\AudiskBootstrap`, adds them to the current installer PATH immediately, and continues without administrator rights, UAC, or a reboot.
+- **Fresh-install pipeline verified end to end.** A clean Windows-PowerShell test with Node/Git absent completed portable bootstrap, Vencord clone, `pnpm install`, transactional Vencord build, Audisk renderer verification, and runtime-helper staging with `-SkipInject`, so Discord itself was never touched during the test.
+- **Portable tools survive the workflows that need them.** `UPDATE.cmd` restores the same bootstrap PATH on later runs, dashboard uninstall uses the portable Node/pnpm path when rebuilding plain Vencord, and a full Audisk/Vencord removal deletes the AudiskBootstrap cache.
 
 ### v4.11.7
 - **Multi-select installer.** `INSTALL.cmd` now accepts one or more installed Discord clients in a single run. Inputs such as `1 3`, `1,3`, `1;3`, and `1 2 3` are supported; duplicate selections are collapsed, uninstalled clients are rejected before installation starts, and only the selected clients are patched.

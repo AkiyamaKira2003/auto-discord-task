@@ -10,6 +10,8 @@ $SnapshotPath = Join-Path $InstallDir '.audisk-preinstall-app.asar'
 $RequestPath = Join-Path $InstallDir '.audisk-uninstall-request.json'
 $OwnPatcher = Join-Path $InstallDir 'dist\patcher.js'
 $LogPath = Join-Path $env:TEMP 'Audisk-uninstall.log'
+$BootstrapToolsPath = Join-Path $InstallDir '.audisk-bootstrap-tools.ps1'
+$BootstrapRoot = Join-Path $env:LOCALAPPDATA 'AudiskBootstrap'
 
 function Log([string]$Message) {
     try { Add-Content -LiteralPath $LogPath -Value ("[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message) } catch {}
@@ -152,7 +154,7 @@ try {
         Restore-OfficialDiscord -Branch $branch -AppAsar $appAsar
         Remove-AudiskSettings
         Start-Discord $branch
-        Schedule-Delete @($InstallDir)
+        Schedule-Delete @($InstallDir, $BootstrapRoot)
         Log 'Audisk and Vencord injection removed; Discord restored.'
         exit 0
     }
@@ -161,7 +163,7 @@ try {
         Copy-Item -LiteralPath $SnapshotPath -Destination $appAsar -Force
         Remove-AudiskSettings
         Start-Discord $branch
-        Schedule-Delete @($InstallDir)
+        Schedule-Delete @($InstallDir, $BootstrapRoot)
         Log 'Audisk removed and the pre-existing Vencord patch restored.'
         exit 0
     }
@@ -175,7 +177,10 @@ try {
     }
     Push-Location $InstallDir
     try {
-        & corepack pnpm build
+        if (-not (Test-Path -LiteralPath $BootstrapToolsPath -PathType Leaf)) { throw 'Audisk bootstrap helper is missing; reinstall Audisk before keeping plain Vencord.' }
+        . $BootstrapToolsPath
+        [void](Ensure-AudiskNode)
+        Invoke-AudiskPortablePnpm -PackageJsonPath (Join-Path $InstallDir 'package.json') -Arguments @('build')
         if ($LASTEXITCODE -ne 0) { throw "Vencord rebuild failed with exit code $LASTEXITCODE." }
     } catch {
         if (Test-Path -LiteralPath $pluginBackup -PathType Container) { Move-Item -LiteralPath $pluginBackup -Destination $pluginDir -Force }
@@ -186,7 +191,7 @@ try {
     if (Test-Path -LiteralPath $pluginBackup) { Remove-Item -LiteralPath $pluginBackup -Recurse -Force -ErrorAction SilentlyContinue }
     Remove-AudiskSettings
     Start-Discord $branch
-    Schedule-Delete @($StatePath, $SnapshotPath, $RequestPath, (Join-Path $InstallDir '.audisk-uninstall.ps1'), (Join-Path $InstallDir '.audisk-uninstall.cmd'))
+    Schedule-Delete @($StatePath, $SnapshotPath, $RequestPath, $BootstrapToolsPath, (Join-Path $InstallDir '.audisk-uninstall.ps1'), (Join-Path $InstallDir '.audisk-uninstall.cmd'))
     Log 'Audisk plugin removed; plain Vencord kept installed.'
     exit 0
 } catch {
